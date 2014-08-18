@@ -1,0 +1,166 @@
+#include "holmes.capnp.h"
+
+#include <capnp/ez-rpc.h>
+#include <llvm/Object/Binary.h>
+#include <llvm/Object/Archive.h>
+#include <llvm/Object/ObjectFile.h>
+#include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/Triple.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <kj/debug.h>
+
+#include <iostream>
+#include <memory>
+#include <vector>
+
+using llvm::dyn_cast;
+using holmes::Holmes;
+using capnp::Orphan;
+using kj::mv;
+using llvm::OwningPtr;
+using llvm::object::Binary;
+using llvm::MemoryBuffer;
+using llvm::Triple;
+using llvm::object::ObjectFile;
+
+class DumpObj final : public Holmes::Analysis::Server {
+  public:
+    kj::Promise<void> analyze(AnalyzeContext context) {
+      auto prems = context.getParams().getPremises();
+      auto orphanage = capnp::Orphanage::getForMessageContaining(context.getResults());
+      std::vector<capnp::Orphan<Holmes::Fact> > derived;
+      //TODO: This can be removed once we have problem instancing
+      for (auto prem : prems) {
+        auto args = prem.getArgs();
+        auto fileName = args[0].getStringVal();
+        auto body = args[1].getBlobVal();
+      
+        auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
+        auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
+        llvm::OwningPtr<llvm::object::Binary> oBin(0);
+        if (llvm::object::createBinary(mb, oBin)) {
+          //We failed to parse the binary
+          Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+          auto fb = fact.get();
+          fb.setFactName("llvm-obj-no-parse");
+          auto ab = fb.initArgs(1);
+          ab[0].setStringVal(fileName);
+          derived.push_back(mv(fact));
+          continue;
+        }
+        llvm::object::Binary *bin = oBin.take();
+        if (llvm::object::Archive *a = dyn_cast<llvm::object::Archive>(bin)) {
+          Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+          auto fb = fact.get();
+          fb.setFactName("is-archive");
+          auto ab = fb.initArgs(1);
+          ab[0].setStringVal(fileName);
+          derived.push_back(mv(fact));
+          for (auto i = a->begin_children(), e = a->end_children(); i != e; ++i) {
+            OwningPtr<Binary> b;
+            if (!i->getAsBinary(b)) {
+              Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+              auto fb = fact.get();
+              fb.setFactName("file");
+              auto ab = fb.initArgs(2);
+              ab[0].setStringVal(std::string(fileName) + ":" + std::string(b->getFileName()));
+              OwningPtr<MemoryBuffer> omb;
+              i->getMemoryBuffer(omb);
+              ab[1].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(omb->getBufferStart()), omb->getBufferSize()));
+              derived.push_back(mv(fact));
+            }
+          }
+        } else if (llvm::object::ObjectFile *o = dyn_cast<llvm::object::ObjectFile>(bin)) {
+          {
+            //Note that it's an object
+            Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+            auto fb = fact.get();
+            fb.setFactName("is-object");
+            auto ab = fb.initArgs(1);
+            ab[0].setStringVal(fileName);
+            derived.push_back(mv(fact));
+          }
+          {
+            //Export its architecture
+            Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+            auto fb = fact.get();
+            fb.setFactName("arch");
+            auto ab = fb.initArgs(2);
+            ab[0].setStringVal(fileName);
+            ab[1].setStringVal(Triple::getArchTypeName(Triple::ArchType(o->getArch())));
+            derived.push_back(mv(fact));
+          }
+          llvm::error_code ec_ignore;
+          for (auto i = o->begin_sections(), e = o->end_sections(); i != e; i = i.increment(ec_ignore)) {
+            Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+            auto fb = fact.get();
+            fb.setFactName("section");
+            auto ab = fb.initArgs(6);
+            llvm::StringRef name;
+            uint64_t base;
+            uint64_t size;
+            llvm::StringRef contents;
+            i->getName(name);
+            i->getAddress(base);
+            i->getSize(size);
+            i->getContents(contents);
+            ab[0].setStringVal(std::string(name));
+            ab[1].setAddrVal(base);
+            ab[2].setAddrVal(size);
+            bool text, rodata, data, bss;
+            i->isText(text);
+            i->isReadOnlyData(rodata);
+            i->isData(data);
+            i->isBSS(bss);
+            if (!bss) {
+              ab[3].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(contents.begin()), contents.size()));
+            }
+            if (text) {
+              ab[4].setStringVal(".text");
+            } else if (rodata) {
+              ab[4].setStringVal(".rodata");
+            } else if (data) {
+              ab[4].setStringVal(".data");
+            } else if (bss) {
+              ab[4].setStringVal(".bss");
+            } else {
+              ab[4].setStringVal(".unk");
+            }
+            ab[5].setStringVal(fileName);
+            derived.push_back(mv(fact));
+          }
+        } else {
+          continue;
+        }
+      }
+      auto derivedBuilder = context.getResults().initDerived(derived.size());
+      auto i = 0;
+      while (!derived.empty()) {
+        derivedBuilder.adoptWithCaveats(i++, mv(derived.back()));
+        derived.pop_back();
+      }
+      return kj::READY_NOW;
+    }
+};
+
+int main(int argc, char* argv[]) {
+  if (argc != 2) {
+    std::cerr << "usage: " << argv[0] << " HOST:PORT" << std::endl;
+    return 1;
+  }
+  capnp::EzRpcClient client(argv[1]);
+  holmes::Holmes::Client holmes = client.importCap<holmes::Holmes>("holmes");
+  auto& waitScope = client.getWaitScope();
+  
+  auto request = holmes.analyzerRequest();
+  auto prems = request.initPremises(1);
+  prems[0].setFactName("file");
+  auto args = prems[0].initArgs(2);
+  args[0].setUnbound();
+  args[1].setUnbound();
+
+  request.setAnalysis(kj::heap<DumpObj>());
+
+  request.send().wait(waitScope);
+  return 0;
+}
