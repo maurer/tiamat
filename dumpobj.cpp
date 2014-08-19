@@ -129,6 +129,45 @@ class DumpObj final : public Holmes::Analysis::Server {
             ab[5].setStringVal(fileName);
             derived.push_back(mv(fact));
           }
+          for (auto i = o->begin_symbols(), e = o->end_symbols(); i != e; i = i.increment(ec_ignore)) {
+            llvm::StringRef symName;
+            uint64_t  symAddr;
+            uint64_t  symSize;
+            llvm::object::SymbolRef::Type symType;
+            uint64_t  symVal;
+            i->getName(symName);
+            i->getAddress(symAddr);
+            i->getSize(symSize);
+            i->getType(symType);
+            i->getValue(symVal);
+            std::string symTypeStr;
+            switch (symType) {
+              case llvm::object::SymbolRef::Type::ST_Unknown:
+                symTypeStr = "unknown"; break;
+              case llvm::object::SymbolRef::Type::ST_Data:
+                symTypeStr = "data"; break;
+              case llvm::object::SymbolRef::Type::ST_Debug:
+                symTypeStr = "debug"; break;
+              case llvm::object::SymbolRef::Type::ST_File:
+                symTypeStr = "file"; break;
+              case llvm::object::SymbolRef::Type::ST_Function:
+                symTypeStr = "func"; break;
+              case llvm::object::SymbolRef::Type::ST_Other:
+                symTypeStr = "other"; break;
+            }
+            
+            Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+            auto fb = fact.get();
+            fb.setFactName("symbol");
+            auto ab = fb.initArgs(6);
+            ab[0].setStringVal(fileName);
+            ab[1].setStringVal(std::string(symName));
+            ab[2].setAddrVal(symAddr);
+            ab[3].setAddrVal(symSize);
+            ab[4].setAddrVal(symVal);
+            ab[5].setStringVal(symTypeStr);
+            derived.push_back(mv(fact));
+          } 
         } else {
           continue;
         }
