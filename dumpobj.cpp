@@ -102,29 +102,31 @@ class DumpObj final : public Holmes::Analysis::Server {
             i->getAddress(base);
             i->getSize(size);
             i->getContents(contents);
-            ab[0].setStringVal(std::string(name));
-            ab[1].setAddrVal(base);
-            ab[2].setAddrVal(size);
+            ab[1].setStringVal(std::string(name));
+            ab[2].setAddrVal(base);
+            ab[3].setAddrVal(size);
             bool text, rodata, data, bss;
             i->isText(text);
             i->isReadOnlyData(rodata);
             i->isData(data);
             i->isBSS(bss);
             if (!bss) {
-              ab[3].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(contents.begin()), contents.size()));
+              ab[4].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(contents.begin()), contents.size()));
+            } else {
+              ab[4].setBlobVal(capnp::Data::Reader(0));
             }
             if (text) {
-              ab[4].setStringVal(".text");
+              ab[5].setStringVal(".text");
             } else if (rodata) {
-              ab[4].setStringVal(".rodata");
+              ab[5].setStringVal(".rodata");
             } else if (data) {
-              ab[4].setStringVal(".data");
+              ab[5].setStringVal(".data");
             } else if (bss) {
-              ab[4].setStringVal(".bss");
+              ab[5].setStringVal(".bss");
             } else {
-              ab[4].setStringVal(".unk");
+              ab[5].setStringVal(".unk");
             }
-            ab[5].setStringVal(fileName);
+            ab[0].setStringVal(fileName);
             derived.push_back(mv(fact));
           }
           for (auto i = o->begin_symbols(), e = o->end_symbols(); i != e; i = i.increment(ec_ignore)) {
