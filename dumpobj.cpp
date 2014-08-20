@@ -29,25 +29,23 @@ class DumpObj final : public Holmes::Analysis::Server {
       auto prems = context.getParams().getPremises();
       auto orphanage = capnp::Orphanage::getForMessageContaining(context.getResults());
       std::vector<capnp::Orphan<Holmes::Fact> > derived;
-      //TODO: This can be removed once we have problem instancing
-      for (auto prem : prems) {
-        auto args = prem.getArgs();
-        auto fileName = args[0].getStringVal();
-        auto body = args[1].getBlobVal();
       
-        auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
-        auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
-        llvm::OwningPtr<llvm::object::Binary> oBin(0);
-        if (llvm::object::createBinary(mb, oBin)) {
-          //We failed to parse the binary
-          Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
-          auto fb = fact.get();
-          fb.setFactName("llvm-obj-no-parse");
-          auto ab = fb.initArgs(1);
-          ab[0].setStringVal(fileName);
-          derived.push_back(mv(fact));
-          continue;
-        }
+      auto args = prems[0].getArgs();
+      auto fileName = args[0].getStringVal();
+      auto body = args[1].getBlobVal();
+      
+      auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
+      auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
+      llvm::OwningPtr<llvm::object::Binary> oBin(0);
+      if (llvm::object::createBinary(mb, oBin)) {
+        //We failed to parse the binary
+        Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+        auto fb = fact.get();
+        fb.setFactName("llvm-obj-no-parse");
+        auto ab = fb.initArgs(1);
+        ab[0].setStringVal(fileName);
+        derived.push_back(mv(fact));
+      } else {
         llvm::object::Binary *bin = oBin.take();
         if (llvm::object::Archive *a = dyn_cast<llvm::object::Archive>(bin)) {
           Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
@@ -168,8 +166,6 @@ class DumpObj final : public Holmes::Analysis::Server {
             ab[5].setStringVal(symTypeStr);
             derived.push_back(mv(fact));
           } 
-        } else {
-          continue;
         }
       }
       auto derivedBuilder = context.getResults().initDerived(derived.size());
@@ -195,7 +191,7 @@ int main(int argc, char* argv[]) {
   auto prems = request.initPremises(1);
   prems[0].setFactName("file");
   auto args = prems[0].initArgs(2);
-  args[0].setUnbound();
+  args[0].setBound("fileName");
   args[1].setUnbound();
 
   request.setAnalysis(kj::heap<DumpObj>());
