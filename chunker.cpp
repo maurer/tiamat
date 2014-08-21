@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <assert.h>
 
 using holmes::Holmes;
 using capnp::Orphan;
@@ -65,6 +66,16 @@ int main(int argc, char* argv[]) {
   holmes::Holmes::Client holmes = client.importCap<holmes::Holmes>("holmes");
   auto& waitScope = client.getWaitScope();
   
+  auto chunkReq = holmes.registerTypeRequest();
+  chunkReq.setFactName("word128");
+  auto chunkArgTypes = chunkReq.initArgTypes(3);
+  chunkArgTypes.set(0, holmes::Holmes::HType::STRING);
+  chunkArgTypes.set(1, holmes::Holmes::HType::ADDR);
+  chunkArgTypes.set(2, holmes::Holmes::HType::BLOB);
+  auto chunkRes = chunkReq.send();
+
+  assert(chunkRes.wait(waitScope).getValid());
+
   auto request = holmes.analyzerRequest();
   auto prems = request.initPremises(1);
   prems[0].setFactName("section");
