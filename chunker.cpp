@@ -30,7 +30,6 @@ class ChunkSection final : public Holmes::Analysis::Server {
         }
       }
       std::vector<capnp::Orphan<Holmes::Fact> > derived;
-      std::cerr << contents.size() << std::endl;
       for (size_t i = 0; i < contents.size(); i++) {
         Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
         auto fb = fact.get();
