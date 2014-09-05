@@ -148,7 +148,7 @@ class DumpObj final : public Holmes::Analysis::Server {
             Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
             auto fb = fact.get();
             fb.setFactName("symbol");
-            auto ab = fb.initArgs(6);
+            auto ab = fb.initArgs(5);
             ab[0].setStringVal(fileName);
             ab[1].setStringVal(std::string(symName));
             ab[2].setAddrVal(symAddr);
