@@ -74,7 +74,19 @@ int main(int argc, char* argv[]) {
   chunkArgTypes.set(2, holmes::Holmes::HType::BLOB);
   auto chunkRes = chunkReq.send();
 
+  auto sectReq = holmes.registerTypeRequest();
+  sectReq.setFactName("section");
+  auto sectReqTypes = sectReq.initArgTypes(6);
+  sectReqTypes.set(0, holmes::Holmes::HType::STRING);
+  sectReqTypes.set(1, holmes::Holmes::HType::STRING);
+  sectReqTypes.set(2, holmes::Holmes::HType::ADDR);
+  sectReqTypes.set(3, holmes::Holmes::HType::ADDR);
+  sectReqTypes.set(4, holmes::Holmes::HType::BLOB);
+  sectReqTypes.set(5, holmes::Holmes::HType::STRING);
+  auto sectRes = sectReq.send();
+
   assert(chunkRes.wait(waitScope).getValid());
+  assert(sectRes.wait(waitScope).getValid());
 
   auto request = holmes.analyzerRequest();
   auto prems = request.initPremises(1);
@@ -85,10 +97,12 @@ int main(int argc, char* argv[]) {
   args[2].setBound("base");
   args[3].setUnbound();
   args[4].setBound("contents");
-  args[5].setBound("mode");
+  auto ev = args[5].initExactVal();
+  ev.setStringVal(".text");
 
   request.setAnalysis(kj::heap<ChunkSection>());
 
+  request.setName("chunker");
 
   request.send().wait(waitScope);
   return 0;
