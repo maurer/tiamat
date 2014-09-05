@@ -187,13 +187,12 @@ int main(int argc, char* argv[]) {
 
   auto symReq = holmes.registerTypeRequest();
   symReq.setFactName("symbol");
-  auto symArgTypes = symReq.initArgTypes(6);
+  auto symArgTypes = symReq.initArgTypes(5);
   symArgTypes.set(0, holmes::Holmes::HType::STRING);
   symArgTypes.set(1, holmes::Holmes::HType::STRING);
   symArgTypes.set(2, holmes::Holmes::HType::ADDR);
   symArgTypes.set(3, holmes::Holmes::HType::ADDR);
-  symArgTypes.set(4, holmes::Holmes::HType::ADDR);
-  symArgTypes.set(5, holmes::Holmes::HType::STRING);
+  symArgTypes.set(4, holmes::Holmes::HType::STRING);
   auto symRes = symReq.send();
 
   auto sectReq = holmes.registerTypeRequest();
