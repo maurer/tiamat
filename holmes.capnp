@@ -10,6 +10,7 @@ interface Holmes {
       stringVal @0 :Text;
       addrVal   @1 :UInt64;
       blobVal   @2 :Data;
+      jsonVal   @3 :Text;
     }
   }
   
@@ -18,6 +19,7 @@ interface Holmes {
     string @0;
     addr   @1;
     blob   @2;
+    json   @3;
   }
 
   # Variables
@@ -56,17 +58,14 @@ interface Holmes {
   
   # Callback provided by an analysis
   interface Analysis {
-    analyze @0 (context :List(Asgn), premises :List(Fact)) -> (derived :List(Fact));
+    analyze @0 (context :List(Asgn)) -> (derived :List(Fact));
   }
 
   # Assert a fact to the server
-  set @0 (fact :Fact);
+  set @0 (facts :List(Fact));
   
   # Ask the server to search for facts
-  # For now, variables don't do much (unless you want to unify two fields
-  # of the same fact), but once search queries are more complex we may
-  # return an Asgn structure.
-  derive @1 (target :FactTemplate) -> (facts :List(Fact));
+  derive @1 (target :List(FactTemplate)) -> (ctx :List(List(Asgn)));
   
   # Register as an analysis
   analyzer @2 (name        :Text,

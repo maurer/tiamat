@@ -27,13 +27,20 @@ using namespace llvm;
 class DumpObj final : public Holmes::Analysis::Server {
   public:
     kj::Promise<void> analyze(AnalyzeContext context) {
-      auto prems = context.getParams().getPremises();
+      auto ctx = context.getParams().getContext();
       auto orphanage = capnp::Orphanage::getForMessageContaining(context.getResults());
       std::vector<capnp::Orphan<Holmes::Fact> > derived;
-      
-      auto args = prems[0].getArgs();
-      auto fileName = args[0].getStringVal();
-      auto body = args[1].getBlobVal();
+      std::string fileName;
+      capnp::Data::Reader body(0);
+      for (auto&& p : ctx) {
+        auto name = std::string(p.getVar());
+        auto val = p.getVal();
+        if (name == "fileName") {
+          fileName = val.getStringVal();
+        } else if (name == "body") {
+          body = val.getBlobVal();
+        }
+      }
       
       auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
       auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
@@ -225,7 +232,7 @@ int main(int argc, char* argv[]) {
   prems[0].setFactName("file");
   auto args = prems[0].initArgs(2);
   args[0].setBound("fileName");
-  args[1].setUnbound();
+  args[1].setBound("body");
 
   request.setAnalysis(kj::heap<DumpObj>());
   
