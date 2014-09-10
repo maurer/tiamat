@@ -24,23 +24,17 @@ using llvm::Triple;
 using llvm::object::ObjectFile;
 using namespace llvm;
 
+#define FILENAME 0
+#define BODY 1
+
 class DumpObj final : public Holmes::Analysis::Server {
   public:
     kj::Promise<void> analyze(AnalyzeContext context) {
       auto ctx = context.getParams().getContext();
       auto orphanage = capnp::Orphanage::getForMessageContaining(context.getResults());
       std::vector<capnp::Orphan<Holmes::Fact> > derived;
-      std::string fileName;
-      capnp::Data::Reader body(0);
-      for (auto&& p : ctx) {
-        auto name = std::string(p.getVar());
-        auto val = p.getVal();
-        if (name == "fileName") {
-          fileName = val.getStringVal();
-        } else if (name == "body") {
-          body = val.getBlobVal();
-        }
-      }
+      std::string fileName(ctx[FILENAME].getStringVal());
+      capnp::Data::Reader body(ctx[BODY].getBlobVal());
       
       auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
       auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
@@ -231,8 +225,8 @@ int main(int argc, char* argv[]) {
   auto prems = request.initPremises(1);
   prems[0].setFactName("file");
   auto args = prems[0].initArgs(2);
-  args[0].setBound("fileName");
-  args[1].setBound("body");
+  args[0].setBound(FILENAME);
+  args[1].setBound(BODY);
 
   request.setAnalysis(kj::heap<DumpObj>());
   

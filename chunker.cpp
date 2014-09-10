@@ -11,25 +11,19 @@
 using holmes::Holmes;
 using capnp::Orphan;
 
+#define FILENAME 0
+#define BASE 1
+#define CONTENTS 2
+
 class ChunkSection final : public Holmes::Analysis::Server {
   public:
     kj::Promise<void> analyze(AnalyzeContext context) {
-      std::string fileName;
-      uint64_t base;
-      capnp::Data::Reader contents(0);
-      bool bssMode = false;
+      auto ctx = context.getParams().getContext();
+      std::string fileName(ctx[FILENAME].getStringVal());
+      uint64_t base = ctx[BASE].getAddrVal();
+      capnp::Data::Reader contents(ctx[CONTENTS].getBlobVal());
+      auto bssMode = false;
       auto orphanage = capnp::Orphanage::getForMessageContaining(context.getResults());
-      for (auto arg : context.getParams().getContext()) {
-        if (arg.getVar() == "fileName") {
-          fileName = arg.getVal().getStringVal();
-        } else if (arg.getVar() == "base") {
-          base = arg.getVal().getAddrVal();
-        } else if (arg.getVar() == "contents") {
-          contents = arg.getVal().getBlobVal();
-        } else if (arg.getVar() == "mode") {
-          bssMode = (arg.getVal().getStringVal() == ".bss");
-        }
-      }
       std::vector<capnp::Orphan<Holmes::Fact> > derived;
       for (size_t i = 0; i < contents.size(); i++) {
         Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
@@ -92,11 +86,11 @@ int main(int argc, char* argv[]) {
   auto prems = request.initPremises(1);
   prems[0].setFactName("section");
   auto args = prems[0].initArgs(6);
-  args[0].setBound("fileName");
+  args[0].setBound(FILENAME);
   args[1].setUnbound();
-  args[2].setBound("base");
+  args[2].setBound(BASE);
   args[3].setUnbound();
-  args[4].setBound("contents");
+  args[4].setBound(CONTENTS);
   auto ev = args[5].initExactVal();
   ev.setStringVal(".text");
 
