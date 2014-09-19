@@ -37,8 +37,8 @@ class DumpObj final : public Holmes::Analysis::Server {
       capnp::Data::Reader body(ctx[BODY].getBlobVal());
       
       auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
-      auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
-      auto maybeBin = llvm::object::createBinary(mb);  
+      std::unique_ptr<llvm::MemoryBuffer> mb(llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false));
+      auto maybeBin = llvm::object::createBinary(kj::mv(mb), NULL);
       if (std::error_code EC = maybeBin.getError()) {
         //We failed to parse the binary
         Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
@@ -48,7 +48,7 @@ class DumpObj final : public Holmes::Analysis::Server {
         ab[0].setStringVal(fileName);
         derived.push_back(mv(fact));
       } else {
-        llvm::object::Binary *bin = maybeBin.get();
+        auto bin = maybeBin->get();
         if (llvm::object::Archive *a = dyn_cast<llvm::object::Archive>(bin)) {
           Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
           auto fb = fact.get();
