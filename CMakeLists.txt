@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(bap-container)
 find_program(LLVM_CONFIG
-   NAMES llvm-config llvm-config-3.6
+   NAMES llvm-config llvm-config-3.5
    DOC "LLVM Config"
    PATHS
 )
@@ -24,13 +24,13 @@ execute_process(COMMAND ${LLVM_CONFIG} --ldflags
                 OUTPUT_VARIABLE LLVM_LDFLAGS
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 execute_process(COMMAND ${LLVM_CONFIG} --system-libs
-                OUTPUT_VARIABLE LLVM_SYSTEMLIBS
+                OUTPUT_VARIABLE LLVM_UNSTRIPPED_SYSTEMLIBS
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
-
+string(STRIP ${LLVM_UNSTRIPPED_SYSTEMLIBS} LLVM_SYSTEMLIBS)
 
 include_directories(${CAPNPROTO_INCLUDE_DIRS})
 CAPNPROTO_GENERATE_CPP(CAPN_SRCS CAPN_HDRS holmes.capnp)
-include_directories(${CMAKE_CURRENT_BINARY_DIR} "/usr/include/llvm-3.6" ${LLVM_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR} "/usr/include/llvm-3.5" ${LLVM_INCLUDE_DIRS})
 add_executable(obj.holmes dumpobj.cpp ${CAPN_SRCS} ${CAPN_HDRS})
 add_executable(chunk.holmes chunker.cpp ${CAPN_SRCS} ${CAPN_HDRS})
 target_link_libraries(obj.holmes ${CAPNPROTO_LIBRARIES})

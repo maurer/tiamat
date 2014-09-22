@@ -37,9 +37,9 @@ class DumpObj final : public Holmes::Analysis::Server {
       capnp::Data::Reader body(ctx[BODY].getBlobVal());
       
       auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
-      std::unique_ptr<llvm::MemoryBuffer> mb(llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false));
-      auto maybeBin = llvm::object::createBinary(kj::mv(mb), NULL);
-      if (std::error_code EC = maybeBin.getError()) {
+      auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
+      auto maybeBin = llvm::object::createBinary(mb);  
+      if (llvm::error_code EC = maybeBin.getError()) {
         //We failed to parse the binary
         Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
         auto fb = fact.get();
@@ -48,7 +48,7 @@ class DumpObj final : public Holmes::Analysis::Server {
         ab[0].setStringVal(fileName);
         derived.push_back(mv(fact));
       } else {
-        auto bin = maybeBin->get();
+        llvm::object::Binary *bin = maybeBin.get();
         if (llvm::object::Archive *a = dyn_cast<llvm::object::Archive>(bin)) {
           Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
           auto fb = fact.get();
@@ -57,16 +57,20 @@ class DumpObj final : public Holmes::Analysis::Server {
           ab[0].setStringVal(fileName);
           derived.push_back(mv(fact));
           for (auto i = a->child_begin(), e = a->child_end(); i != e; ++i) {
-            ErrorOr<std::unique_ptr<Binary>> maybeChild = i->getAsBinary();
-            if (ObjectFile *b = dyn_cast<ObjectFile>(&*maybeChild.get())) {
-              Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
-              auto fb = fact.get();
-              fb.setFactName("file");
-              auto ab = fb.initArgs(2);
-              ab[0].setStringVal(std::string(fileName) + ":" + std::string(b->getFileName()));
-              auto ir = i->getMemoryBuffer();
-              ab[1].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(ir.get()->getBufferStart()), ir.get()->getBufferSize()));
-              derived.push_back(mv(fact));
+            llvm::OwningPtr<llvm::object::Binary> maybeChild;
+            llvm::error_code ChildEC = i->getAsBinary(maybeChild);
+            if (!ChildEC) {
+              if (ObjectFile *b = dyn_cast<ObjectFile>(maybeChild.get())) {
+                Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
+                auto fb = fact.get();
+                fb.setFactName("file");
+                auto ab = fb.initArgs(2);
+                ab[0].setStringVal(std::string(fileName) + ":" + std::string(b->getFileName()));
+                llvm::OwningPtr<llvm::MemoryBuffer> ir;
+                i->getMemoryBuffer(ir);
+                ab[1].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(ir.get()->getBufferStart()), ir.get()->getBufferSize()));
+                derived.push_back(mv(fact));
+              }
             }
           }
         } else if (llvm::object::ObjectFile *o = dyn_cast<llvm::object::ObjectFile>(bin)) {
@@ -80,8 +84,8 @@ class DumpObj final : public Holmes::Analysis::Server {
             ab[1].setStringVal(Triple::getArchTypeName(Triple::ArchType(o->getArch())));
             derived.push_back(mv(fact));
           }
-          std::error_code ec_ignore;
-          for (auto i : o->sections()) {
+          llvm::error_code ec_ignore;
+          for (auto it = o->section_begin(); it != o->section_end(); ++it) {
             Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
             auto fb = fact.get();
             fb.setFactName("section");
@@ -90,6 +94,7 @@ class DumpObj final : public Holmes::Analysis::Server {
             uint64_t base;
             uint64_t size;
             llvm::StringRef contents;
+            auto i = *it;
             i.getName(name);
             i.getAddress(base);
             i.getSize(size);
@@ -121,11 +126,12 @@ class DumpObj final : public Holmes::Analysis::Server {
             ab[0].setStringVal(fileName);
             derived.push_back(mv(fact));
           }
-          for (auto i : o->symbols()) {
+          for (auto it = o->symbol_begin(); it != o->symbol_end(); ++it) {
             llvm::StringRef symName;
             uint64_t  symAddr;
             uint64_t  symSize;
             llvm::object::SymbolRef::Type symType;
+            auto i = *it;
             i.getName(symName);
             i.getAddress(symAddr);
             i.getSize(symSize);
