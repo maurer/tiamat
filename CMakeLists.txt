@@ -39,3 +39,6 @@ target_link_libraries(obj.holmes ${LLVM_LIBS} ${LLVM_SYSTEMLIBS})
 CAPNPROTO_ADD_CXXFLAGS()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS} ${LLVM_LDFLAGS} -Wall -Werror")
 set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} ${LLVM_LDFLAGS}")
+
+install(TARGETS chunk.holmes obj.holmes
+        RUNTIME DESTINATION bin)
