@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(bap-container)
 find_program(LLVM_CONFIG
-   NAMES llvm-config llvm-config-3.6
+   NAMES llvm-config-3.6 llvm-config
    DOC "LLVM Config"
    PATHS
 )
