@@ -22,6 +22,7 @@ using llvm::object::Binary;
 using llvm::MemoryBuffer;
 using llvm::Triple;
 using llvm::object::ObjectFile;
+using llvm::object::OwningBinary;
 using namespace llvm;
 
 #define FILENAME 0
@@ -37,9 +38,9 @@ class DumpObj final : public Holmes::Analysis::Server {
       capnp::Data::Reader body(ctx[BODY].getBlobVal());
       
       auto sr = llvm::StringRef(reinterpret_cast<const char*>(body.begin()), body.size());
-      auto mb = llvm::MemoryBuffer::getMemBuffer(sr, "holmes-input", false);
-      auto maybeBin = llvm::object::createBinary(mb);  
-      if (llvm::error_code EC = maybeBin.getError()) {
+      auto mb = llvm::MemoryBufferRef(sr, "holmes-input");
+      auto maybeBin = llvm::object::createBinary(mb); 
+      if (auto EC = maybeBin.getError()) {
         //We failed to parse the binary
         Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
         auto fb = fact.get();
@@ -48,8 +49,8 @@ class DumpObj final : public Holmes::Analysis::Server {
         ab[0].setStringVal(fileName);
         derived.push_back(mv(fact));
       } else {
-        llvm::object::Binary *bin = maybeBin.get();
-        if (llvm::object::Archive *a = dyn_cast<llvm::object::Archive>(bin)) {
+        auto bin = mv(maybeBin.get());
+        if (llvm::object::Archive *a = dyn_cast<llvm::object::Archive*>(bin)) {
           Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
           auto fb = fact.get();
           fb.setFactName("is-archive");
@@ -57,23 +58,21 @@ class DumpObj final : public Holmes::Analysis::Server {
           ab[0].setStringVal(fileName);
           derived.push_back(mv(fact));
           for (auto i = a->child_begin(), e = a->child_end(); i != e; ++i) {
-            llvm::OwningPtr<llvm::object::Binary> maybeChild;
-            llvm::error_code ChildEC = i->getAsBinary(maybeChild);
-            if (!ChildEC) {
-              if (ObjectFile *b = dyn_cast<ObjectFile>(maybeChild.get())) {
+            auto maybeChild = i->getAsBinary();
+            if (!maybeChild.getError()) {
+              if (ObjectFile *b = dyn_cast<ObjectFile*>(maybeChild.get())) {
                 Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
                 auto fb = fact.get();
                 fb.setFactName("file");
                 auto ab = fb.initArgs(2);
                 ab[0].setStringVal(std::string(fileName) + ":" + std::string(b->getFileName()));
-                llvm::OwningPtr<llvm::MemoryBuffer> ir;
-                i->getMemoryBuffer(ir);
-                ab[1].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(ir.get()->getBufferStart()), ir.get()->getBufferSize()));
+                auto ir = i->getMemoryBufferRef();
+                ab[1].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(ir.get().getBufferStart()), ir.get().getBufferSize()));
                 derived.push_back(mv(fact));
               }
             }
           }
-        } else if (llvm::object::ObjectFile *o = dyn_cast<llvm::object::ObjectFile>(bin)) {
+        } else if (llvm::object::ObjectFile *o = dyn_cast<llvm::object::ObjectFile*>(bin)) {
           {
             //Export its architecture
             Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
@@ -84,29 +83,25 @@ class DumpObj final : public Holmes::Analysis::Server {
             ab[1].setStringVal(Triple::getArchTypeName(Triple::ArchType(o->getArch())));
             derived.push_back(mv(fact));
           }
-          llvm::error_code ec_ignore;
           for (auto it = o->section_begin(); it != o->section_end(); ++it) {
             Orphan<Holmes::Fact> fact = orphanage.newOrphan<Holmes::Fact>();
             auto fb = fact.get();
             fb.setFactName("section");
             auto ab = fb.initArgs(6);
             llvm::StringRef name;
-            uint64_t base;
-            uint64_t size;
             llvm::StringRef contents;
             auto i = *it;
             i.getName(name);
-            i.getAddress(base);
-            i.getSize(size);
+            uint64_t base = i.getAddress();
+            uint64_t size = i.getSize();
             i.getContents(contents);
             ab[1].setStringVal(std::string(name));
             ab[2].setAddrVal(base);
             ab[3].setAddrVal(size);
-            bool text, rodata, data, bss;
-            i.isText(text);
-            i.isReadOnlyData(rodata);
-            i.isData(data);
-            i.isBSS(bss);
+            bool text = i.isText();
+            bool rodata = i.isReadOnlyData();
+            bool data = i.isData();
+            bool bss = i.isBSS();
             if (!bss) {
               ab[4].setBlobVal(capnp::Data::Reader(reinterpret_cast<const unsigned char*>(contents.begin()), contents.size()));
             } else {

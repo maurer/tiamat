@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(bap-container)
 find_program(LLVM_CONFIG
-   NAMES llvm-config llvm-config-3.5
+   NAMES llvm-config llvm-config-3.6
    DOC "LLVM Config"
    PATHS
 )
@@ -30,15 +30,13 @@ string(STRIP ${LLVM_UNSTRIPPED_SYSTEMLIBS} LLVM_SYSTEMLIBS)
 
 include_directories(${CAPNPROTO_INCLUDE_DIRS})
 CAPNPROTO_GENERATE_CPP(CAPN_SRCS CAPN_HDRS holmes.capnp)
-include_directories(${CMAKE_CURRENT_BINARY_DIR} "/usr/include/llvm-3.5" ${LLVM_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR} "/usr/include/llvm-3.6" ${LLVM_INCLUDE_DIRS})
 add_executable(obj.holmes dumpobj.cpp ${CAPN_SRCS} ${CAPN_HDRS})
-add_executable(chunk.holmes chunker.cpp ${CAPN_SRCS} ${CAPN_HDRS})
 target_link_libraries(obj.holmes ${CAPNPROTO_LIBRARIES})
-target_link_libraries(chunk.holmes ${CAPNPROTO_LIBRARIES})
 target_link_libraries(obj.holmes ${LLVM_LIBS} ${LLVM_SYSTEMLIBS})
 CAPNPROTO_ADD_CXXFLAGS()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS} ${LLVM_LDFLAGS} -Wall -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS} ${LLVM_LDFLAGS} -Wall -Wno-error=unused-command-line-argument -Werror")
 set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS} ${LLVM_LDFLAGS}")
 
-install(TARGETS chunk.holmes obj.holmes
+install(TARGETS obj.holmes
         RUNTIME DESTINATION bin)
