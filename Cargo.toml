@@ -1,0 +1,13 @@
+[package]
+
+name = "tiamat"
+version = "0.0.1"
+authors = [ "Matthew Maurer <maurer@matthewmaurer.org>" ]
+license = "MIT"
+description = "Binary analysis using Holmes"
+repository = "https://github.com/maurer/tiamat"
+
+[dependencies]
+holmes = { path = "holmes" }
+bap = { path = "bap-rust" }
+getopts = "*"
