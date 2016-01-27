@@ -1,24 +1,74 @@
-language: cpp
-
-before_install:
-  - sudo sh -c "echo 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise-3.6-binaries main' >> /etc/apt/sources.list"
-  - sudo sh -c "echo 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise main' >> /etc/apt/sources.list"
-  - wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key | sudo apt-key add -
-  - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-  - sudo apt-get update
-install:
-  - sudo apt-get install clang++-3.6 clang-3.6 llvm-3.6-dev git cmake libedit-dev
-  - git clone https://github.com/kentonv/capnproto.git
-  - export CC=clang-3.6
-  - export CXX=clang++-3.6
-  - cd capnproto/c++
-  - ./setup-autotools.sh
-  - autoreconf -i
-  - ./configure && make -j5 && sudo make install && cd ../..
-
-script:
-  - mkdir build
-
-script:
-  - mkdir build && cd build && cmake ..
+language: rust
+cache:
+  directories:
+    - $HOME/.opam
+    - $HOME/.cache/pip
+before_cache:
+  - rm -rf $HOME/.opam/log
+before_script:
+  # Install libbap
+  - opam init -y
+  - eval `opam config env`
+  - opam pin add core_kernel 112.17.00 -y
+  - opam pin add bap --dev-repo -y
+  - opam install -y oasis
+  - cd bap-rust/libbap
+  - oasis setup
+  - ./configure --prefix $HOME/.local
   - make
+  - make install
+  - cd ../..
+  # Fetch travis-cargo
+  - |
+      pip install 'travis-cargo<0.2' --user &&
+      export PATH=$HOME/.local/bin:$PATH
+
+sudo: false
+addons:
+  postgresql: 9.3
+  apt:
+    sources:
+    - avsm
+    packages:
+    - camlp4
+    - camlp4-extra
+    - clang
+    - curl
+    - libcurl4-gnutls-dev
+    - libgmp-dev
+    - libssl-dev
+    - libzip-dev
+    - llvm
+    - llvm-3.4-dev
+    - m4
+    - ocaml
+    - ocaml-base
+    - ocaml-base-nox
+    - ocaml-compiler-libs
+    - ocaml-native-compilers
+    - ocaml-nox
+    - time
+    - opam
+    - aspcud
+
+rust:
+  - nightly
+  - beta
+  - stable
+
+script:
+  - travis-cargo build
+  - travis-cargo test
+  - travis-cargo bench
+  - travis-cargo --only stable doc
+
+after_success:
+  - travis-cargo coveralls --no-sudo --verify
+  - travis-cargo --only stable doc-upload
+
+env:
+  global:
+    - TRAVIS_CARGO_NIGHTLY_FEATURE=""
+    - LIBRARY_PATH=$HOME/.local/lib:$LIBRARY_PATH
+    - LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
+    - secure: "PzsQk7Hc/OXhDNou9h/9e7d1AVeUF+z11GNXFZwuEIm10mxplvBHRNr8tSFbl39sooN3dg/kZZ39LOHr9JQnH8oKbYly/mLu2zySISG7j2i8P4F2gYfYHDpBhYyGL7FKoqdrMmOAZEaqf2sek4EFKeb4gTsvC2OJxmWpD18LLCVb1WRB0cjwppqSdo1TH6j1pXOVAl17X4Ci2bPZj5FT5dw+2NsEAbajDBr//Y+LCfQl2Ex3lvzTfPnyTxPgpe6vvLMn37bZqmj8G9DD3nFmBS4vMpZtZShywqXChSy2yMPCxHZXxArxezs+LQu0PbA/i3kxvNUjqzsmfRl6Dim3V3ou5c41tVawaj3QuRDcc1ksfNQpEwfiGxHoHrd8fTk/dWb0KnS5A5Hu0Z89T4Wm+wIAt2pNMBY+wqpDbBCVE5ZcOLLxZpOR64nGeUaqv8y5WH/nGz5Lt6M6J/fAodLdbbkayPyOcahoJf4vnr6j7Pw0+RROiSh26gT8n6DbRBwRCQIDQuN7+N6a/YhOFXx2BETHp404/gmpJL4ayeuCH+Pk0COf654Z/xOxDOE4zeof0G45mFb/qkfn+EiOSAyAwnzdmVK/Q03tg1fGZgfAFePQo1D58PXXJYxJ87XJDdU79+miOFaVJAkd7kqqTaNpYBx0FPCLB8Qb3wnv3oP7oVA="
