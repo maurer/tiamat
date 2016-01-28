@@ -6,11 +6,14 @@ cache:
 before_cache:
   - rm -rf $HOME/.opam/log
 before_script:
-  # Install libbap
+  # Install bap
   - opam init -y
   - eval `opam config env`
   - opam pin add core_kernel 112.17.00 -y
   - opam pin add bap --dev-repo -y
+  # Fetch libbap, since travis doesn't do recursive submodules
+  - git submodule update --init --recursive
+  # Install libbap
   - opam install -y oasis
   - cd bap-rust/libbap
   - oasis setup
