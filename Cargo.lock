@@ -5,6 +5,7 @@ dependencies = [
  "bap 0.0.1",
  "getopts 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "holmes 0.0.1",
+ "num 0.1.30 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

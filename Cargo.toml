@@ -11,3 +11,4 @@ repository = "https://github.com/maurer/tiamat"
 holmes = { path = "holmes" }
 bap = { path = "bap-rust" }
 getopts = "*"
+num = "*"
