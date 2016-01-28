@@ -1,6 +1,3 @@
-//#![feature(trace_macros)]
-//trace_macros!(true);
-
 #[macro_use]
 extern crate holmes;
 extern crate getopts;
@@ -10,7 +7,9 @@ extern crate num;
 use holmes::{DB, Holmes};
 use getopts::Options;
 use std::env;
-use bap::high_level::Segment;
+use bap::high_level::{Segment, Arch, BitVector, lift};
+use num::bigint::BigUint;
+use num::traits::{ToPrimitive, FromPrimitive};
 
 fn main() {
   let db_default_addr = "postgresql://holmes:holmes@localhost/holmes";
@@ -50,6 +49,10 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
       predicate!(file(string, blob));
       //Filename, contents, start addr, end addr, r, w, x
       predicate!(segment(string, blob, uint64, uint64, uint64, uint64, uint64));
+      predicate!(entry(string, uint64));
+      predicate!(successor(uint64, uint64));
+      predicate!(live(string, uint64));
+      predicate!(chunk(string, uint64, blob));
       func!(let seg_wrap : blob -> [(blob, uint64, uint64, uint64, uint64, uint64)] = | v : HValue | {
         let contents = match v {
           HValue::BlobV(v) => v,
@@ -57,7 +60,6 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
         };
         let segs = Segment::from_file_contents(&contents);
         HValue::ListV(segs.into_iter().map(|seg| {
-          use num::traits::ToPrimitive;
           HValue::ListV(vec![
             HValue::BlobV(seg.data),
             HValue::UInt64V(seg.start.val.to_u64().unwrap()),
@@ -68,9 +70,65 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
           ])
         }).collect())
       });
+      func!(let chunk : (uint64, blob) -> [(uint64, blob)] = |v : HValue| {
+        let (base, data) = match v {
+          HValue::ListV(l) => {
+            assert_eq!(l.len(), 2);
+            match (&l[0], &l[1]) {
+              (&HValue::UInt64V(base),
+               &HValue::BlobV(ref data)) => (base, data.clone()),
+              _ => panic!("Wrong type")
+            }
+          },
+          _ => panic!("Wrong type")
+        };
+        HValue::ListV(data.windows(16).enumerate().map(|(offset, window)| {
+          HValue::ListV(vec![HValue::UInt64V(base + (offset as u64)),
+                             HValue::BlobV(window.to_owned())])
+        }).collect())
+      });
+      func!(let byteweight : (uint64, uint64, blob) -> uint64 = |v : HValue| {
+        let (start, end, data) = match v {
+          HValue::ListV(l) => {
+            assert_eq!(l.len(), 3);
+            match (&l[0], &l[1], &l[2]) {
+              (&HValue::UInt64V(start),
+               &HValue::UInt64V(end),
+               &HValue::BlobV(ref data)) => (start, end, data.clone()),
+              _ => panic!("Wrong type")
+            }
+          }
+          _ => panic!("Wrong type")
+        };
+        let seg = Segment {
+          name : "dummy".to_string(),
+          r : true,
+          w : false,
+          x : true,
+          start : BitVector {
+            val : BigUint::from_u64(start).unwrap(),
+            width : 64
+          },
+          end   : BitVector {
+            val : BigUint::from_u64(end).unwrap(),
+            width : 64
+          },
+          data : data
+        };
+        HValue::ListV(seg.byteweight(Arch::X86).iter().map(|sym| {
+          HValue::UInt64V(sym.start.val.to_u64().unwrap())
+        }).collect())
+      });
       rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
+      rule!(chunk(name, addr, chunk) <= segment(name, data, base, [_], [_], [_], [_]), {
+        let [ {addr, chunk} ] = {chunk([base], [data])}
+      });
+      rule!(entry(name, addr) <= segment(name, data, start, end, (1), [_], (1)), {
+        let [ addr ] = {byteweight([start], [end], [data])}
+      });
+      rule!(live(name, addr) <= entry(name, addr));
       fact!(file(in_path, in_bin))
     })
 }
