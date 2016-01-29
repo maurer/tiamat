@@ -5,9 +5,11 @@ extern crate bap;
 extern crate num;
 
 use holmes::{DB, Holmes};
+use holmes::native_types::HValue;
 use getopts::Options;
 use std::env;
-use bap::high_level::{Segment, Arch, BitVector, lift};
+use bap::high_level::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
+use bap::low_level::Stmt::*;
 use num::bigint::BigUint;
 use num::traits::{ToPrimitive, FromPrimitive};
 
@@ -35,6 +37,79 @@ fn main() {
   holmes_prog(&mut holmes, &in_path).unwrap();
 }
 
+fn stmt_succ(stmts : &[Stmt]) -> (Vec<BitVector>, bool) {
+  if stmts.len() == 0 {
+    return (Vec::new(), true)
+  }
+  match &stmts[0] {
+    &Jump(Expr::BitVector(ref v)) => (vec![v.clone()], false),
+    &Jump(_) => (vec![], false),
+    &While{cond : _, ref body} => {
+      let (mut tgts, fall) = stmt_succ(&body);
+      if fall {
+        let (mut tgts2, fall2) = stmt_succ(&stmts[1..]);
+        let mut tgt_res = Vec::new();
+        tgt_res.append(&mut tgts);
+        tgt_res.append(&mut tgts2);
+        (tgt_res, fall2)
+      } else {
+        (tgts, fall)
+      }
+    }
+    &IfThenElse{cond : _, ref then_clause, ref else_clause} => {
+      let (mut then_tgts, then_fall) = stmt_succ(&then_clause);
+      let (mut else_tgts, else_fall) = stmt_succ(&else_clause);
+      let fall = then_fall || else_fall;
+      let mut tgt_res = Vec::new();
+      tgt_res.append(&mut then_tgts);
+      tgt_res.append(&mut else_tgts);
+      if fall {
+        let (mut tgts2, fall2) = stmt_succ(&stmts[1..]);
+        tgt_res.append(&mut tgts2);
+        (tgt_res, fall2)
+      } else {
+        (tgt_res, fall)
+      }
+    }
+    _ => stmt_succ(&stmts[1..])
+  }
+}
+
+fn successors(arch : Arch, bin : &[u8], addr : BitVector) -> Vec<BitVector> {
+  let (_, fall_addr, sema) = lift(&addr, Endian::Little, arch, bin).into_iter().next().unwrap();
+  let (mut targets, fall) = stmt_succ(&sema);
+  if fall {
+    targets.push(fall_addr);
+  }
+  println!("{}", targets.len());
+  targets
+}
+
+fn succ_wrap(v : HValue) -> HValue {
+  println!("Entering succ_wrap");
+  match v {
+    HValue::ListV(ref l) => {
+      match (&l[0], &l[1]) {
+        (&HValue::UInt64V(addr),
+         &HValue::BlobV(ref bin)) => HValue::ListV(successors(Arch::X86, &bin, BitVector {
+            val : BigUint::from_u64(addr).unwrap(),
+            width : 32
+        }).iter().map(|x|{HValue::UInt64V(x.val.to_u64().unwrap())}).collect()),
+        _ => panic!("Wrong type")
+      }
+    }
+    _ => panic!("Wrong type")
+  }
+}
+
+fn sym_wrap(v : HValue) -> HValue {
+  match v {
+    HValue::BlobV(ref b) =>
+      HValue::ListV(Symbol::from_file_contents(&b).iter().map(|x|{HValue::UInt64V(x.start.val.to_u64().unwrap())}).collect()),
+    _ => panic!("Wrong type")
+  }
+}
+
 fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
     use holmes::native_types::*;
 
@@ -50,7 +125,7 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
       //Filename, contents, start addr, end addr, r, w, x
       predicate!(segment(string, blob, uint64, uint64, uint64, uint64, uint64));
       predicate!(entry(string, uint64));
-      predicate!(successor(uint64, uint64));
+      predicate!(succ(string, uint64, uint64));
       predicate!(live(string, uint64));
       predicate!(chunk(string, uint64, blob));
       func!(let seg_wrap : blob -> [(blob, uint64, uint64, uint64, uint64, uint64)] = | v : HValue | {
@@ -107,11 +182,11 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
           x : true,
           start : BitVector {
             val : BigUint::from_u64(start).unwrap(),
-            width : 64
+            width : 32
           },
           end   : BitVector {
             val : BigUint::from_u64(end).unwrap(),
-            width : 64
+            width : 32
           },
           data : data
         };
@@ -119,6 +194,8 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
           HValue::UInt64V(sym.start.val.to_u64().unwrap())
         }).collect())
       });
+      func!(let find_succs : (uint64, blob) -> [uint64] = succ_wrap);
+      func!(let find_syms  : blob -> [uint64] = sym_wrap);
       rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
@@ -128,7 +205,14 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
       rule!(entry(name, addr) <= segment(name, data, start, end, (1), [_], (1)), {
         let [ addr ] = {byteweight([start], [end], [data])}
       });
+      rule!(entry(name, addr) <= file(name, in_bin), {
+        let [ addr ] = {find_syms([in_bin])}
+      });
       rule!(live(name, addr) <= entry(name, addr));
+      rule!(succ(name, src, sink) <= live(name, src) & chunk(name, src, bin), {
+        let [ sink ] = {find_succs([src], [bin])}
+      });
+      rule!(live(name, sink) <= live(name, src) & succ(name, src, sink));
       fact!(file(in_path, in_bin))
     })
 }
