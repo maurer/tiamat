@@ -76,17 +76,22 @@ fn stmt_succ(stmts : &[Stmt]) -> (Vec<BitVector>, bool) {
 }
 
 fn successors(arch : Arch, bin : &[u8], addr : BitVector) -> Vec<BitVector> {
-  let (_, fall_addr, sema) = lift(&addr, Endian::Little, arch, bin).into_iter().next().unwrap();
+  use num::bigint::BigUint;
+  use num::traits::One;
+  let (_, mut fall_addr, sema) =
+    match lift(&addr, Endian::Little, arch, bin).into_iter().next() {
+      Some(x) => x,
+      None => return Vec::new()
+    };
+  fall_addr.val = fall_addr.val + BigUint::one();
   let (mut targets, fall) = stmt_succ(&sema);
   if fall {
     targets.push(fall_addr);
   }
-  println!("{}", targets.len());
   targets
 }
 
 fn succ_wrap(v : HValue) -> HValue {
-  println!("Entering succ_wrap");
   match v {
     HValue::ListV(ref l) => {
       match (&l[0], &l[1]) {
