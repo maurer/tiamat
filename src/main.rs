@@ -78,12 +78,15 @@ fn stmt_succ(stmts : &[Stmt]) -> (Vec<BitVector>, bool) {
 fn successors(arch : Arch, bin : &[u8], addr : BitVector) -> Vec<BitVector> {
   use num::bigint::BigUint;
   use num::traits::One;
-  let (_, mut fall_addr, sema) =
+  let (_, mut fall_addr, sema, is_call) =
     match lift(&addr, Endian::Little, arch, bin).into_iter().next() {
       Some(x) => x,
       None => return Vec::new()
     };
   fall_addr.val = fall_addr.val + BigUint::one();
+  if is_call {
+    return vec![fall_addr]
+  }
   let (mut targets, fall) = stmt_succ(&sema);
   if fall {
     targets.push(fall_addr);
