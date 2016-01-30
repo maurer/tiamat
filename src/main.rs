@@ -97,9 +97,10 @@ fn successors(arch : Arch, bin : &[u8], addr : BitVector) -> Vec<BitVector> {
 fn succ_wrap(v : HValue) -> HValue {
   match v {
     HValue::ListV(ref l) => {
-      match (&l[0], &l[1]) {
-        (&HValue::UInt64V(addr),
-         &HValue::BlobV(ref bin)) => HValue::ListV(successors(Arch::X86, &bin, BitVector {
+      match (&l[0], &l[1], &l[2]) {
+        (&HValue::UInt64V(arch),
+         &HValue::UInt64V(addr),
+         &HValue::BlobV(ref bin)) => HValue::ListV(successors(Arch::of_bap(unsafe {::std::mem::transmute(arch)}), &bin, BitVector {
             val : BigUint::from_u64(addr).unwrap(),
             width : 32
         }).iter().map(|x|{HValue::UInt64V(x.val.to_u64().unwrap())}).collect()),
@@ -114,6 +115,14 @@ fn sym_wrap(v : HValue) -> HValue {
   match v {
     HValue::BlobV(ref b) =>
       HValue::ListV(Symbol::from_file_contents(&b).iter().map(|x|{HValue::UInt64V(x.start.val.to_u64().unwrap())}).collect()),
+    _ => panic!("Wrong type")
+  }
+}
+
+fn get_arch_val(v : HValue) -> HValue {
+  match v {
+    HValue::BlobV(ref b) =>
+      HValue::UInt64V(Arch::from_file_contents(&b).to_bap() as u64),
     _ => panic!("Wrong type")
   }
 }
@@ -136,6 +145,8 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
       predicate!(succ(string, uint64, uint64));
       predicate!(live(string, uint64));
       predicate!(chunk(string, uint64, blob));
+      predicate!(arch(string, uint64));
+      func!(let get_arch_val : blob -> uint64 = get_arch_val);
       func!(let seg_wrap : blob -> [(blob, uint64, uint64, uint64, uint64, uint64)] = | v : HValue | {
         let contents = match v {
           HValue::BlobV(v) => v,
@@ -170,14 +181,15 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
                              HValue::BlobV(window.to_owned())])
         }).collect())
       });
-      func!(let byteweight : (uint64, uint64, blob) -> uint64 = |v : HValue| {
-        let (start, end, data) = match v {
+      func!(let byteweight : (uint64, uint64, uint64, blob) -> uint64 = |v : HValue| {
+        let (arch, start, end, data) = match v {
           HValue::ListV(l) => {
-            assert_eq!(l.len(), 3);
-            match (&l[0], &l[1], &l[2]) {
-              (&HValue::UInt64V(start),
+            assert_eq!(l.len(), 4);
+            match (&l[0], &l[1], &l[2], &l[3]) {
+              (&HValue::UInt64V(arch),
+               &HValue::UInt64V(start),
                &HValue::UInt64V(end),
-               &HValue::BlobV(ref data)) => (start, end, data.clone()),
+               &HValue::BlobV(ref data)) => (arch, start, end, data.clone()),
               _ => panic!("Wrong type")
             }
           }
@@ -198,7 +210,7 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
           },
           data : data
         };
-        HValue::ListV(seg.byteweight(Arch::X86).iter().map(|sym| {
+        HValue::ListV(seg.byteweight(Arch::of_bap(unsafe {::std::mem::transmute(arch)})).iter().map(|sym| {
           HValue::UInt64V(sym.start.val.to_u64().unwrap())
         }).collect())
       });
@@ -210,17 +222,20 @@ fn holmes_prog(holmes : &mut Holmes, in_path : &str) -> holmes::Result<()> {
       rule!(chunk(name, addr, chunk) <= segment(name, data, base, [_], [_], [_], [_]), {
         let [ {addr, chunk} ] = {chunk([base], [data])}
       });
-      rule!(entry(name, addr) <= segment(name, data, start, end, (1), [_], (1)), {
-        let [ addr ] = {byteweight([start], [end], [data])}
+      rule!(entry(name, addr) <= arch(name, arch) & segment(name, data, start, end, (1), [_], (1)), {
+        let [ addr ] = {byteweight([arch], [start], [end], [data])}
       });
       rule!(entry(name, addr) <= file(name, in_bin), {
         let [ addr ] = {find_syms([in_bin])}
       });
       rule!(live(name, addr) <= entry(name, addr));
-      rule!(succ(name, src, sink) <= live(name, src) & chunk(name, src, bin), {
-        let [ sink ] = {find_succs([src], [bin])}
+      rule!(succ(name, src, sink) <= live(name, src) & chunk(name, src, bin) & arch(name, arch), {
+        let [ sink ] = {find_succs([arch], [src], [bin])}
       });
       rule!(live(name, sink) <= live(name, src) & succ(name, src, sink));
+      rule!(arch(name, arch) <= file(name, contents), {
+        let arch = {get_arch_val([contents])}
+      });
       fact!(file(in_path, in_bin))
     })
 }
