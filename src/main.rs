@@ -8,8 +8,8 @@ use holmes::{DB, Holmes};
 use holmes::native_types::HValue;
 use getopts::Options;
 use std::env;
-use bap::high_level::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
-use bap::low_level::Stmt::*;
+use bap::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
+use bap::expert::Stmt::*;
 use num::bigint::BigUint;
 use num::traits::{ToPrimitive, FromPrimitive};
 
