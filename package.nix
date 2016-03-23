@@ -1,6 +1,6 @@
-{ rustPlatform, holmes, bap-rust }:
-with rustPlatform;
+{ rustUnstable, holmes, bap-rust }:
 
+with rustUnstable;
 buildRustPackage rec {
   name = "tiamat";
   src  = ./.;

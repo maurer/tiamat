@@ -1,14 +1,12 @@
 use bap::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
 use bap::expert::Stmt::*;
-use num::bigint::BigUint;
-use num::traits::{ToPrimitive, FromPrimitive};
 
-pub fn seg_wrap(contents : &Vec<u8>) -> Vec<(Vec<u8>, u64, u64, bool, bool, bool)> {
+pub fn seg_wrap(contents : &Vec<u8>) -> Vec<(Vec<u8>, BitVector, BitVector, bool, bool, bool)> {
   let segs = Segment::from_file_contents(&contents);
   segs.into_iter().map(|seg| {
     (seg.data,
-     seg.start.val.to_u64().unwrap(),
-     seg.end.val.to_u64().unwrap(),
+     seg.start,
+     seg.end,
      seg.r,
      seg.w,
      seg.x)
@@ -53,15 +51,13 @@ pub fn stmt_succ(stmts : &[Stmt]) -> (Vec<BitVector>, bool) {
   }
 }
 
-pub fn successors(arch : Arch, bin : &[u8], addr : BitVector) -> Vec<BitVector> {
-  use num::bigint::BigUint;
-  use num::traits::One;
+pub fn successors(arch : Arch, bin : &[u8], addr : &BitVector) -> Vec<BitVector> {
   let (_, mut fall_addr, sema, is_call) =
-    match lift(&addr, Endian::Little, arch, bin).into_iter().next() {
+    match lift(addr, Endian::Little, arch, bin).into_iter().next() {
       Some(x) => x,
-      None => return Vec::new()
+      None => panic!("Lifting failure") //return Vec::new()
     };
-  fall_addr.val = fall_addr.val + BigUint::one();
+  fall_addr = fall_addr + 1;
   if is_call {
     return vec![fall_addr]
   }
@@ -72,15 +68,12 @@ pub fn successors(arch : Arch, bin : &[u8], addr : BitVector) -> Vec<BitVector> 
   targets
 }
 
-pub fn succ_wrap((arch, addr, bin) : (&u64, &u64, &Vec<u8>)) -> Vec<u64> {
-  successors(Arch::of_bap(unsafe {::std::mem::transmute(arch)}), bin, BitVector {
-            val : BigUint::from_u64(*addr).unwrap(),
-            width : 32
-        }).iter().map(|x|{x.val.to_u64().unwrap()}).collect::<Vec<_>>()
+pub fn succ_wrap((arch, addr, bin) : (&u64, &BitVector, &Vec<u8>)) -> Vec<BitVector> {
+  successors(Arch::of_bap(unsafe {::std::mem::transmute(*arch)}), bin, addr)
 }
 
-pub fn sym_wrap(b : &Vec<u8>) -> Vec<u64> {
-  Symbol::from_file_contents(&b).iter().map(|x|{x.start.val.to_u64().unwrap()}).collect::<Vec<_>>()
+pub fn sym_wrap(b : &Vec<u8>) -> Vec<BitVector> {
+  Symbol::from_file_contents(&b).into_iter().map(|x|{x.start}).collect::<Vec<_>>()
 }
 
 pub fn get_arch_val(v : &Vec<u8>) -> u64 {

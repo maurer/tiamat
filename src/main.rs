@@ -2,13 +2,17 @@
 extern crate holmes;
 extern crate getopts;
 extern crate bap;
-extern crate num;
+//extern crate num;
+//extern crate postgres; //eww, reexport ToSql somehow?
+//extern crate bit_vec;
 
 use holmes::{DB, Holmes};
 use getopts::Options;
 use std::env;
+use bap::BitVector;
 
 pub mod analyses;
+pub mod schema;
 
 fn main() {
   let db_default_addr = "postgresql://holmes:holmes@localhost/holmes";
@@ -42,25 +46,19 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
       try!(in_file.read_to_end(&mut in_bin));
     }
 
+    try!(schema::setup(holmes));
+
     holmes_exec!(holmes, {
-      predicate!(file(string, bytes));
-      //Filename, contents, start addr, end addr, r, w, x
-      predicate!(segment(string, bytes, uint64, uint64, bool, bool, bool));
-      predicate!(entry(string, uint64));
-      predicate!(succ(string, uint64, uint64));
-      predicate!(live(string, uint64));
-      predicate!(chunk(string, uint64, bytes));
-      predicate!(arch(string, uint64));
       func!(let get_arch_val : bytes -> uint64 = analyses::get_arch_val);
-      func!(let seg_wrap : bytes -> [(bytes, uint64, uint64, bool, bool, bool)] = analyses::seg_wrap);
-      func!(let chunk : (uint64, bytes) -> [(uint64, bytes)] = |(base, data) : (&u64, &Vec<u8>)| {
+      func!(let seg_wrap : bytes -> [(bytes, bitvector, bitvector, bool, bool, bool)] = analyses::seg_wrap);
+      func!(let chunk : (bitvector, bytes) -> [(bitvector, bytes)] = |(base, data) : (&BitVector, &Vec<u8>)| {
         data.windows(16).enumerate().map(|(offset, window)| {
-          (base + offset as u64,
+          (base + offset,
            window.to_owned())
         }).collect::<Vec<_>>()
       });
-      func!(let find_succs : (uint64, uint64, bytes) -> [uint64] = analyses::succ_wrap);
-      func!(let find_syms  : bytes -> [uint64] = analyses::sym_wrap);
+      func!(let find_succs : (uint64, bitvector, bytes) -> [bitvector] = analyses::succ_wrap);
+      func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
       rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
