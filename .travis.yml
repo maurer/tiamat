@@ -9,8 +9,7 @@ before_script:
   # Install bap
   - opam init -y
   - eval `opam config env`
-  - opam pin add core_kernel 112.17.00 -y
-  - opam pin add bap --dev-repo -y
+  - opam pin add bap git://github.com/maurer/bap#0.9.9 -y
   # Fetch libbap, since travis doesn't do recursive submodules
   - git submodule update --init --recursive
   # Install libbap
