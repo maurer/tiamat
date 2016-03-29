@@ -2,21 +2,24 @@
 name = "tiamat"
 version = "0.0.1"
 dependencies = [
- "bap 0.0.1 (git+https://github.com/maurer/bap-rust?rev=c55a1eb9c638d219f3ba5ab847c955e844e5ed8d)",
+ "bap 0.0.1 (git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe)",
+ "bit-vec 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
- "holmes 0.0.1 (git+https://github.com/maurer/holmes?rev=4c80b375c906472d3867fdb54ebb0f29be339a30)",
+ "holmes 0.0.1 (git+https://github.com/maurer/holmes?rev=1467cb49d950c459f2e9553762835b7fd273d2f5)",
+ "postgres 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "postgres_array 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "bap"
 version = "0.0.1"
-source = "git+https://github.com/maurer/bap-rust?rev=c55a1eb9c638d219f3ba5ab847c955e844e5ed8d#c55a1eb9c638d219f3ba5ab847c955e844e5ed8d"
+source = "git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe#d567134c0696eae6e8d88e018d06ae6ca5594bbe"
 dependencies = [
- "bap-sys 0.0.1 (git+https://github.com/maurer/bap-rust?rev=c55a1eb9c638d219f3ba5ab847c955e844e5ed8d)",
+ "bap-sys 0.0.1 (git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe)",
  "bit-vec 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "enum_primitive 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "holmes 0.0.1 (git+https://github.com/maurer/holmes?rev=4c80b375c906472d3867fdb54ebb0f29be339a30)",
+ "holmes 0.0.1 (git+https://github.com/maurer/holmes?rev=1467cb49d950c459f2e9553762835b7fd273d2f5)",
  "libc 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.1.31 (registry+https://github.com/rust-lang/crates.io-index)",
  "postgres 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -25,7 +28,7 @@ dependencies = [
 [[package]]
 name = "bap-sys"
 version = "0.0.1"
-source = "git+https://github.com/maurer/bap-rust?rev=c55a1eb9c638d219f3ba5ab847c955e844e5ed8d#c55a1eb9c638d219f3ba5ab847c955e844e5ed8d"
+source = "git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe#d567134c0696eae6e8d88e018d06ae6ca5594bbe"
 dependencies = [
  "libc 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "pkg-config 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -72,7 +75,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "holmes"
 version = "0.0.1"
-source = "git+https://github.com/maurer/holmes?rev=4c80b375c906472d3867fdb54ebb0f29be339a30#4c80b375c906472d3867fdb54ebb0f29be339a30"
+source = "git+https://github.com/maurer/holmes?rev=1467cb49d950c459f2e9553762835b7fd273d2f5#1467cb49d950c459f2e9553762835b7fd273d2f5"
 dependencies = [
  "getopts 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "postgres 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -153,6 +156,7 @@ dependencies = [
  "log 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "net2 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "phf 0.7.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "unix_socket 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

@@ -1,5 +1,6 @@
 use bap::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
 use bap::expert::Stmt::*;
+use ubvs::UpperBVSet;
 
 pub fn seg_wrap(contents : &Vec<u8>) -> Vec<(Vec<u8>, BitVector, BitVector, bool, bool, bool)> {
   let segs = Segment::from_file_contents(&contents);
@@ -70,6 +71,16 @@ pub fn successors(arch : &Arch, bin : &[u8], addr : &BitVector) -> Vec<BitVector
 
 pub fn succ_wrap((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> Vec<BitVector> {
   successors(arch, bin, addr)
+}
+
+pub fn succ_wrap_upper((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> UpperBVSet {
+    let bvs = successors(arch, bin, addr);
+    //TODO allow empty vec for cases where program will actually terminate
+    if bvs.len() == 0 {
+        UpperBVSet::Top
+    } else {
+        UpperBVSet::BVSet(bvs)
+    }
 }
 
 pub fn sym_wrap(b : &Vec<u8>) -> Vec<BitVector> {

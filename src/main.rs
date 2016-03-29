@@ -2,9 +2,10 @@
 extern crate holmes;
 extern crate getopts;
 extern crate bap;
-//extern crate num;
-//extern crate postgres; //eww, reexport ToSql somehow?
-//extern crate bit_vec;
+#[macro_use]
+extern crate postgres;
+extern crate postgres_array;
+extern crate bit_vec;
 
 use holmes::{DB, Holmes};
 use getopts::Options;
@@ -13,6 +14,7 @@ use bap::BitVector;
 
 pub mod analyses;
 pub mod schema;
+pub mod ubvs;
 
 fn main() {
   let db_default_addr = "postgresql://holmes:holmes@localhost/holmes";
@@ -57,7 +59,8 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
            window.to_owned())
         }).collect::<Vec<_>>()
       });
-      func!(let find_succs : (uint64, bitvector, bytes) -> [bitvector] = analyses::succ_wrap);
+      func!(let find_succs : (arch, bitvector, bytes) -> [bitvector] = analyses::succ_wrap);
+      func!(let find_succs_upper : (arch, bitvector, bytes) -> ubvs = analyses::succ_wrap_upper);
       func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
       rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
@@ -71,6 +74,9 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
       rule!(live(name, addr) <= entry(name, addr));
       rule!(succ(name, src, sink) <= live(name, src) & chunk(name, src, bin) & arch(name, arch), {
         let [ sink ] = {find_succs([arch], [src], [bin])}
+      });
+      rule!(may_jump(name, src, sinks) <= live(name, src) & chunk(name, src, bin) & arch(name, arch), {
+        let sinks = {find_succs_upper([arch], [src], [bin])}
       });
       rule!(live(name, sink) <= live(name, src) & succ(name, src, sink));
       rule!(arch(name, arch) <= file(name, contents), {
