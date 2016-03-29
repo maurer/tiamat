@@ -51,9 +51,9 @@ pub fn stmt_succ(stmts : &[Stmt]) -> (Vec<BitVector>, bool) {
   }
 }
 
-pub fn successors(arch : Arch, bin : &[u8], addr : &BitVector) -> Vec<BitVector> {
+pub fn successors(arch : &Arch, bin : &[u8], addr : &BitVector) -> Vec<BitVector> {
   let (_, mut fall_addr, sema, is_call) =
-    match lift(addr, Endian::Little, arch, bin).into_iter().next() {
+    match lift(addr, Endian::Little, *arch, bin).into_iter().next() {
       Some(x) => x,
       None => panic!("Lifting failure") //return Vec::new()
     };
@@ -68,14 +68,14 @@ pub fn successors(arch : Arch, bin : &[u8], addr : &BitVector) -> Vec<BitVector>
   targets
 }
 
-pub fn succ_wrap((arch, addr, bin) : (&u64, &BitVector, &Vec<u8>)) -> Vec<BitVector> {
-  successors(Arch::of_bap(unsafe {::std::mem::transmute(*arch)}), bin, addr)
+pub fn succ_wrap((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> Vec<BitVector> {
+  successors(arch, bin, addr)
 }
 
 pub fn sym_wrap(b : &Vec<u8>) -> Vec<BitVector> {
   Symbol::from_file_contents(&b).into_iter().map(|x|{x.start}).collect::<Vec<_>>()
 }
 
-pub fn get_arch_val(v : &Vec<u8>) -> u64 {
-  Arch::from_file_contents(v).to_bap() as u64
+pub fn get_arch_val(v : &Vec<u8>) -> Arch {
+  Arch::from_file_contents(v)
 }

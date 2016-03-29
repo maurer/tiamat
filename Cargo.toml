@@ -8,6 +8,13 @@ description = "Binary analysis using Holmes"
 repository = "https://github.com/maurer/tiamat"
 
 [dependencies]
-holmes = { path = "holmes" }
-bap = { path = "bap-rust", features = [ "holmes_support" ]}
 getopts = "*"
+
+[dependencies.holmes]
+git = "https://github.com/maurer/holmes"
+rev = "4c80b375c906472d3867fdb54ebb0f29be339a30"
+
+[dependencies.bap]
+git = "https://github.com/maurer/bap-rust"
+rev = "c55a1eb9c638d219f3ba5ab847c955e844e5ed8d"
+features = ["holmes_support"]

@@ -1,6 +1,0 @@
-[submodule "holmes"]
-	path = holmes
-	url = https://github.com/maurer/holmes.git
-[submodule "bap-rust"]
-	path = bap-rust
-	url = https://github.com/maurer/bap-rust.git
