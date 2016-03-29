@@ -14,12 +14,12 @@ before_script:
   - git submodule update --init --recursive
   # Install libbap
   - opam install -y oasis
-  - cd bap-rust/libbap
+  - cd libbap
   - oasis setup
   - ./configure --prefix $HOME/.local
   - make
   - make install
-  - cd ../..
+  - cd ..
   # Fetch travis-cargo
   - |
       pip install 'travis-cargo<0.2' --user &&
