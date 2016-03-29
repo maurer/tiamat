@@ -6,15 +6,17 @@ extern crate bap;
 extern crate postgres;
 extern crate postgres_array;
 extern crate bit_vec;
+extern crate rustc_serialize;
 
 use holmes::{DB, Holmes};
 use getopts::Options;
 use std::env;
 use bap::BitVector;
 
-pub mod analyses;
-pub mod schema;
-pub mod ubvs;
+mod analyses;
+mod schema;
+mod ubvs;
+mod typing;
 
 fn main() {
   let db_default_addr = "postgresql://holmes:holmes@localhost/holmes";

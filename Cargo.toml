@@ -11,6 +11,7 @@ repository = "https://github.com/maurer/tiamat"
 getopts = "*"
 postgres_array = "0.6"
 bit-vec = "0.4"
+rustc-serialize = "0.3"
 
 [dependencies.postgres]
 version = "0.11"
@@ -22,5 +23,5 @@ rev = "1467cb49d950c459f2e9553762835b7fd273d2f5"
 
 [dependencies.bap]
 git = "https://github.com/maurer/bap-rust"
-rev = "d567134c0696eae6e8d88e018d06ae6ca5594bbe"
-features = ["holmes_support"]
+rev = "262062d23941e78473e9205f70a3130834efd6c1"
+features = ["holmes_support", "json"]

@@ -2,20 +2,21 @@
 name = "tiamat"
 version = "0.0.1"
 dependencies = [
- "bap 0.0.1 (git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe)",
+ "bap 0.0.1 (git+https://github.com/maurer/bap-rust?rev=262062d23941e78473e9205f70a3130834efd6c1)",
  "bit-vec 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "holmes 0.0.1 (git+https://github.com/maurer/holmes?rev=1467cb49d950c459f2e9553762835b7fd273d2f5)",
  "postgres 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "postgres_array 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.18 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "bap"
 version = "0.0.1"
-source = "git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe#d567134c0696eae6e8d88e018d06ae6ca5594bbe"
+source = "git+https://github.com/maurer/bap-rust?rev=262062d23941e78473e9205f70a3130834efd6c1#262062d23941e78473e9205f70a3130834efd6c1"
 dependencies = [
- "bap-sys 0.0.1 (git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe)",
+ "bap-sys 0.0.1 (git+https://github.com/maurer/bap-rust?rev=262062d23941e78473e9205f70a3130834efd6c1)",
  "bit-vec 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "enum_primitive 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -23,12 +24,13 @@ dependencies = [
  "libc 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.1.31 (registry+https://github.com/rust-lang/crates.io-index)",
  "postgres 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.18 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "bap-sys"
 version = "0.0.1"
-source = "git+https://github.com/maurer/bap-rust?rev=d567134c0696eae6e8d88e018d06ae6ca5594bbe#d567134c0696eae6e8d88e018d06ae6ca5594bbe"
+source = "git+https://github.com/maurer/bap-rust?rev=262062d23941e78473e9205f70a3130834efd6c1#262062d23941e78473e9205f70a3130834efd6c1"
 dependencies = [
  "libc 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "pkg-config 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
