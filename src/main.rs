@@ -17,6 +17,7 @@ mod analyses;
 mod schema;
 mod ubvs;
 mod typing;
+mod sema;
 
 fn main() {
   let db_default_addr = "postgresql://holmes:holmes@localhost/holmes";
@@ -61,9 +62,10 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
            window.to_owned())
         }).collect::<Vec<_>>()
       });
-      func!(let find_succs : (arch, bitvector, bytes) -> [bitvector] = analyses::succ_wrap);
-      func!(let find_succs_upper : (arch, bitvector, bytes) -> ubvs = analyses::succ_wrap_upper);
+      func!(let find_succs : (sema, bitvector) -> [bitvector] = analyses::successors);
+      func!(let find_succs_upper : (sema, bitvector) -> ubvs = analyses::succ_wrap_upper);
       func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
+      func!(let lift : (arch, bitvector, bytes) -> (sema, bitvector) = analyses::lift_wrap);
       rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
@@ -74,11 +76,14 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
         let [ addr ] = {find_syms([in_bin])}
       });
       rule!(live(name, addr) <= entry(name, addr));
-      rule!(succ(name, src, sink) <= live(name, src) & chunk(name, src, bin) & arch(name, arch), {
-        let [ sink ] = {find_succs([arch], [src], [bin])}
+      rule!(sema(name, addr, sema, fall) <= live(name, addr) & chunk(name, addr, bin) & arch(name, arch), {
+         let sema, fall = {lift([arch], [addr], [bin])}
       });
-      rule!(may_jump(name, src, sinks) <= live(name, src) & chunk(name, src, bin) & arch(name, arch), {
-        let sinks = {find_succs_upper([arch], [src], [bin])}
+      rule!(succ(name, src, sink) <= sema(name, src, sema, fall), {
+        let [ sink ] = {find_succs([sema], [fall])}
+      });
+      rule!(may_jump(name, src, sinks) <= sema(name, src, sema, fall), {
+        let sinks = {find_succs_upper([sema], [fall])}
       });
       rule!(live(name, sink) <= live(name, src) & succ(name, src, sink));
       rule!(arch(name, arch) <= file(name, contents), {

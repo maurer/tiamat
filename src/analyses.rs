@@ -1,6 +1,7 @@
 use bap::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
 use bap::expert::Stmt::*;
 use ubvs::UpperBVSet;
+use sema::Sema;
 
 pub fn seg_wrap(contents : &Vec<u8>) -> Vec<(Vec<u8>, BitVector, BitVector, bool, bool, bool)> {
   let segs = Segment::from_file_contents(&contents);
@@ -52,29 +53,26 @@ pub fn stmt_succ(stmts : &[Stmt]) -> (Vec<BitVector>, bool) {
   }
 }
 
-pub fn successors(arch : &Arch, bin : &[u8], addr : &BitVector) -> Vec<BitVector> {
-  let (_, mut fall_addr, sema, is_call) =
-    match lift(addr, Endian::Little, *arch, bin).into_iter().next() {
-      Some(x) => x,
-      None => panic!("Lifting failure") //return Vec::new()
-    };
-  fall_addr = fall_addr + 1;
-  if is_call {
-    return vec![fall_addr]
-  }
-  let (mut targets, fall) = stmt_succ(&sema);
+pub fn successors((sema, fall_addr) : (&Sema, &BitVector)) -> Vec<BitVector> {
+  let (mut targets, fall) = stmt_succ(&sema.stmts);
   if fall {
-    targets.push(fall_addr);
+    targets.push(fall_addr.clone());
   }
   targets
 }
 
-pub fn succ_wrap((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> Vec<BitVector> {
-  successors(arch, bin, addr)
+pub fn lift_wrap((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> (Sema, BitVector) {
+   let (_, mut fall_addr, sema, _) =
+   match lift(addr, Endian::Little, *arch, bin).into_iter().next() {
+      Some(x) => x,
+      None => panic!("Lifting failure") //return Vec::new()
+   };
+   fall_addr = fall_addr + 1;
+   (Sema {stmts: sema}, fall_addr)
 }
 
-pub fn succ_wrap_upper((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> UpperBVSet {
-    let bvs = successors(arch, bin, addr);
+pub fn succ_wrap_upper((sema, fall_addr) : (&Sema, &BitVector)) -> UpperBVSet {
+    let bvs = successors((sema, fall_addr));
     //TODO allow empty vec for cases where program will actually terminate
     if bvs.len() == 0 {
         UpperBVSet::Top

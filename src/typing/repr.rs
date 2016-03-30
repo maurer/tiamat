@@ -77,7 +77,7 @@ impl ValueT for BlockType {
 }
 
 impl ToSql for BlockType {
-  accepts!(::postgres::types::Type::Jsonb);
+  accepts!(::postgres::types::Type::Jsonb, ::postgres::types::Type::Json);
   to_sql_checked!();
   fn to_sql<W: ?Sized>(&self, ty: &::postgres::types::Type, out: &mut W, ctx: &SessionInfo) -> Result<IsNull> 
       where Self: Sized, W: Write {
