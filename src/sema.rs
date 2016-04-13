@@ -10,10 +10,21 @@ use std::sync::Arc;
 use std::io::prelude::Write;
 use rustc_serialize::json::{Json,Decoder,ToJson,encode};
 use rustc_serialize::Decodable;
+use std::fmt;
 
 #[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
 pub struct Sema {
     pub stmts: Vec<Stmt>
+}
+
+impl fmt::Display for Sema {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(f.write_str("{\n"));
+        for stmt in self.stmts.iter() {
+            try!(write!(f, "{}\n", stmt));
+        }
+        f.write_str("}")
+    }
 }
 
 impl ToJson for Sema {

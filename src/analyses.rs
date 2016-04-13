@@ -81,8 +81,8 @@ pub fn succ_wrap_upper((sema, fall_addr) : (&Sema, &BitVector)) -> UpperBVSet {
     }
 }
 
-pub fn sym_wrap(b : &Vec<u8>) -> Vec<BitVector> {
-  Symbol::from_file_contents(&b).into_iter().map(|x|{x.start}).collect::<Vec<_>>()
+pub fn sym_wrap(b : &Vec<u8>) -> Vec<(String, BitVector)> {
+  Symbol::from_file_contents(&b).into_iter().map(|x|{(x.name, x.start)}).collect::<Vec<_>>()
 }
 
 pub fn get_arch_val(v : &Vec<u8>) -> Arch {

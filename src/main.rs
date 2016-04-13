@@ -64,28 +64,28 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
       });
       func!(let find_succs : (sema, bitvector) -> [bitvector] = analyses::successors);
       func!(let find_succs_upper : (sema, bitvector) -> ubvs = analyses::succ_wrap_upper);
-      func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
+      func!(let find_syms  : bytes -> [(string, bitvector)] = analyses::sym_wrap);
       func!(let lift : (arch, bitvector, bytes) -> (sema, bitvector) = analyses::lift_wrap);
+      func!(let local_type : sema -> blocktype = typing::local_type);
       rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
       rule!(chunk(name, addr, chunk) <= segment(name, data, base, [_], [_], [_], [_]), {
         let [ {addr, chunk} ] = {chunk([base], [data])}
       });
-      rule!(entry(name, addr) <= file(name, in_bin), {
-        let [ addr ] = {find_syms([in_bin])}
+      rule!(entry(name, sym_name, addr) <= file(name, in_bin), {
+        let [ {sym_name, addr} ] = {find_syms([in_bin])}
       });
-      rule!(live(name, addr) <= entry(name, addr));
+      rule!(live(file, addr) <= entry(file, ("main"), addr));
       rule!(sema(name, addr, sema, fall) <= live(name, addr) & chunk(name, addr, bin) & arch(name, arch), {
          let sema, fall = {lift([arch], [addr], [bin])}
       });
-      rule!(succ(name, src, sink) <= sema(name, src, sema, fall), {
-        let [ sink ] = {find_succs([sema], [fall])}
+      rule!(insn_type(sema, typ) <= sema(name, [_], sema, [_]), {
+          let typ = {local_type([sema])}
       });
       rule!(may_jump(name, src, sinks) <= sema(name, src, sema, fall), {
         let sinks = {find_succs_upper([sema], [fall])}
       });
-      rule!(live(name, sink) <= live(name, src) & succ(name, src, sink));
       rule!(arch(name, arch) <= file(name, contents), {
         let arch = {get_arch_val([contents])}
       });

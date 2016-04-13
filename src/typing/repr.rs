@@ -11,29 +11,60 @@ use std::sync::Arc;
 use std::io::prelude::Write;
 use rustc_serialize::json::{Json,Decoder,ToJson,encode};
 use rustc_serialize::Decodable;
+use std::fmt;
 
 #[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
 pub enum ValType {
     Var(u64),
-    UInt { width : u32 },
-    Int { width : u32 },
+    R { width : usize },
+    UInt { width : usize },
+    Int { width : usize },
     Ptr (Box<ValType>),
     PPtr (BTreeMap<i64, ValType>),
     Code (Box<BlockType>)
 }
 
+impl fmt::Display for ValType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ValType::*;
+        match *self {
+            Var(v) => write!(f, "τ{}", v),
+            R {width: width} => write!(f, "r{}", width),
+            UInt {width: width} => write!(f, "u{}", width),
+            Int {width: width} => write!(f, "i{}", width),
+            Ptr(ref typ) => write!(f, "{}*", typ),
+            //TODO(low) fix these printers to be prettier
+            PPtr(ref map) => write!(f, "{{{:?}}}", map),
+            Code(ref bt) => write!(f, "%{:?}", bt)
+        }
+    }
+}
+
 #[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
-pub enum Assumes {
+pub enum Assume {
+    AddrType {
+        addr: BitVector,
+        typ:  BlockType
+    },
+    FallType {
+        typ: BlockType
+    }
+}
+
+#[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
+pub enum Stack {
     Var(u64),
-    Many(Vec<Assumes>),
-    AddrType(BitVector, BlockType)
+    Alloc(Box<Stack>),
+    Release(Box<Stack>),
+    With {base: Box<Stack>,
+          slots: BTreeMap<i64, ValType>},
 }
 
 #[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
 pub struct BlockType {
-    register_file: Vec<ValType>,
-    stack: Vec<ValType>,
-    assumes: Box<Assumes>
+    pub register_file: BTreeMap<String, ValType>,
+    pub stack: Stack,
+    pub assumes: Vec<Assume>
 }
 
 impl ToJson for BlockType {

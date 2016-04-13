@@ -16,8 +16,7 @@ pub fn setup(holmes : &mut Holmes) -> holmes::Result<()> {
       predicate!(file(string, bytes));
       //Filename, contents, start addr, end addr, r, w, x
       predicate!(segment(string, bytes, bitvector, bitvector, bool, bool, bool));
-      predicate!(entry(string, bitvector));
-      predicate!(succ(string, bitvector, bitvector));
+      predicate!(entry(string, string, bitvector));
       predicate!(live(string, bitvector));
       predicate!(sema(string, bitvector, sema, bitvector));
       predicate!(chunk(string, bitvector, bytes));
