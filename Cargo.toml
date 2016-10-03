@@ -19,9 +19,7 @@ features = ["bit-vec", "rustc-serialize"]
 
 [dependencies.holmes]
 git = "https://github.com/maurer/holmes"
-rev = "1467cb49d950c459f2e9553762835b7fd273d2f5"
 
 [dependencies.bap]
 git = "https://github.com/maurer/bap-rust"
-rev = "39f9f23c094d57aadb8540524b973465a1f66673"
 features = ["holmes_support", "json"]
