@@ -2,16 +2,20 @@
 extern crate holmes;
 extern crate getopts;
 extern crate bap;
+extern crate num;
 #[macro_use]
 extern crate postgres;
 extern crate postgres_array;
 extern crate bit_vec;
 extern crate rustc_serialize;
+extern crate url;
 
 use holmes::{DB, Holmes};
 use getopts::Options;
 use std::env;
 use bap::BitVector;
+use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
+use holmes::pg::dyn::values::LargeBWrap;
 
 mod analyses;
 mod schema;
@@ -19,13 +23,20 @@ mod ubvs;
 mod typing;
 mod sema;
 
+fn url_encode(input : &[u8]) -> String {
+      percent_encode(input, PATH_SEGMENT_ENCODE_SET).to_string()
+}
+
 fn main() {
-  let db_default_addr = "postgresql://holmes:holmes@localhost/holmes";
+  let db_default_addr = match env::var("TIAMAT_PG_SOCK_DIR") {
+      Ok(dir) => format!("postgresql://holmes@{}/holmes", url_encode(&dir.into_bytes())),
+      _ => format!("postgres://holmes@%2Fvar%2Frun%2Fpostgresql/holmes")
+  };
   let default_in = "a.out";
   let mut opts = Options::new();
   opts.optopt("i", "in", "binary to process", default_in);
   opts.optopt("d", "database", "database connection string",
-              "postgresql://holmes:holmes@localhost/holmes");
+              &db_default_addr); 
   opts.optflag("h", "help", "print usage and exit");
   let mut args = env::args();
   let prog_name = args.next().unwrap();
@@ -44,39 +55,36 @@ fn main() {
 }
 
 fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
-    let mut in_bin = Vec::new();
+    let mut in_raw = Vec::new();
     {
       use std::io::Read;
       let mut in_file = try!(std::fs::File::open(&in_path));
-      try!(in_file.read_to_end(&mut in_bin));
+      try!(in_file.read_to_end(&mut in_raw));
     }
+
+    let in_bin = LargeBWrap {inner: in_raw}; 
 
     try!(schema::setup(holmes));
 
     holmes_exec!(holmes, {
       func!(let get_arch_val : bytes -> uint64 = analyses::get_arch_val);
-      func!(let seg_wrap : bytes -> [(bytes, bitvector, bitvector, bool, bool, bool)] = analyses::seg_wrap);
-      func!(let chunk : (bitvector, bytes) -> [(bitvector, bytes)] = |(base, data) : (&BitVector, &Vec<u8>)| {
-        data.windows(16).enumerate().map(|(offset, window)| {
-          (base + offset,
-           window.to_owned())
-        }).collect::<Vec<_>>()
-      });
+      func!(let seg_wrap : bytes -> [(bytes, uint64, bitvector, bitvector, bool, bool, bool)] = analyses::seg_wrap);
       func!(let find_succs : (sema, bitvector) -> [bitvector] = analyses::successors);
       func!(let find_succs_upper : (sema, bitvector) -> ubvs = analyses::succ_wrap_upper);
       func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
       func!(let lift : (arch, bitvector, bytes) -> (sema, bitvector) = analyses::lift_wrap);
-      rule!(segment(name, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
-        let [ {seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
-      });
-      rule!(chunk(name, addr, chunk) <= segment(name, data, base, [_], [_], [_], [_]), {
-        let [ {addr, chunk} ] = {chunk([base], [data])}
+      func!(let rebase : (bitvector, bitvector, bitvector, uint64) -> [(uint64, uint64)] = analyses::rebase);
+      rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
+        let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
       rule!(entry(name, addr) <= file(name, in_bin), {
         let [ addr ] = {find_syms([in_bin])}
       });
       rule!(live(name, addr) <= entry(name, addr));
-      rule!(sema(name, addr, sema, fall) <= live(name, addr) & chunk(name, addr, bin) & arch(name, arch), {
+      rule!(seglive(name, id, addr, start, end) <= live(name, addr) & segment(name, id, [_], seg_start, seg_end, [_], [_], [_]), {
+        let [ {start, end} ] = {rebase([seg_start], [seg_end], [addr], (16))}
+      }); 
+      rule!(sema(name, addr, sema, fall) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
          let sema, fall = {lift([arch], [addr], [bin])}
       });
       rule!(succ(name, src, sink) <= sema(name, src, sema, fall), {

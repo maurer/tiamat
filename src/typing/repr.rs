@@ -58,7 +58,7 @@ impl TypeT for BlockTypeType {
         Arc::new(typed)
     }
     fn repr(&self) -> Vec<String> {
-        vec!["json".to_string()]
+        vec!["jsonb".to_string()]
     }
     typet_boiler!(); 
 }

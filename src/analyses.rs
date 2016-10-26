@@ -2,11 +2,38 @@ use bap::{Segment, Arch, BitVector, lift, Endian, Stmt, Expr, Symbol};
 use bap::expert::Stmt::*;
 use ubvs::UpperBVSet;
 use sema::Sema;
+use std::cmp::min;
+use num::ToPrimitive;
+use holmes::pg::dyn::values::LargeBWrap;
 
-pub fn seg_wrap(contents : &Vec<u8>) -> Vec<(Vec<u8>, BitVector, BitVector, bool, bool, bool)> {
+pub fn rebase((base, end, addr, len) : (&BitVector, &BitVector, &BitVector, &u64)) -> Vec<(u64, u64)> {
+  let addr = addr.to_u64().unwrap();
+  let end = end.to_u64().unwrap();
+  let base = base.to_u64().unwrap();
+  if (addr >= base) && (addr < end) {
+    let datlen = end - base;
+    let start = addr - base;
+    let end = min(start + len, datlen);
+    vec![(start, end)]
+  } else {
+    vec![]
+  }
+}
+
+static mut ids : u64 = 0;
+
+fn fresh() -> u64 {
+  unsafe {
+  ids = ids + 1;
+  ids
+  }
+}
+
+pub fn seg_wrap(contents : &Vec<u8>) -> Vec<(u64, LargeBWrap, BitVector, BitVector, bool, bool, bool)> {
   let segs = Segment::from_file_contents(&contents);
   segs.into_iter().map(|seg| {
-    (seg.data,
+    (fresh(),
+     LargeBWrap {inner: seg.data},
      seg.start,
      seg.end,
      seg.r,
