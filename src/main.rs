@@ -22,6 +22,7 @@ mod schema;
 mod ubvs;
 mod typing;
 mod sema;
+mod var;
 
 fn url_encode(input : &[u8]) -> String {
       percent_encode(input, PATH_SEGMENT_ENCODE_SET).to_string()

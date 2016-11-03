@@ -8,6 +8,8 @@ description = "Binary analysis using Holmes"
 repository = "https://github.com/maurer/tiamat"
 
 [dependencies]
+num = "*"
+url = "*"
 getopts = "*"
 postgres_array = "0.6"
 bit-vec = "0.4"
