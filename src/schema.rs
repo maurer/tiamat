@@ -18,7 +18,8 @@ pub fn setup(holmes : &mut Holmes) -> holmes::Result<()> {
       predicate!(file(string, largebytes));
       //Filename, contents, start addr, end addr, r, w, x
       predicate!(segment(string, uint64, largebytes, bitvector, bitvector, bool, bool, bool));
-      predicate!(entry(string, bitvector));
+      predicate!(entry(string, string, bitvector));
+      predicate!(disasm(string, bitvector, string));
       predicate!(succ(string, bitvector, bitvector));
       predicate!(live(string, bitvector));
       predicate!(seglive(string, uint64, bitvector, uint64, uint64));

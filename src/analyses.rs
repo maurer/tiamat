@@ -89,13 +89,23 @@ pub fn successors((sema, fall_addr) : (&Sema, &BitVector)) -> Vec<BitVector> {
 }
 
 pub fn lift_wrap((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> (Sema, BitVector) {
-   let (_, mut fall_addr, sema, _) =
+   let (_, mut fall_addr, sema, _, _) =
    match lift(addr, Endian::Little, *arch, bin).into_iter().next() {
       Some(x) => x,
       None => panic!("Lifting failure") //return Vec::new()
    };
    fall_addr = fall_addr + 1;
    (Sema {stmts: sema}, fall_addr)
+}
+
+//TODO: holmes doesn't allow multiple heads yet, so we lift twice to get the disasm
+pub fn disas_wrap((arch, addr, bin) : (&Arch, &BitVector, &Vec<u8>)) -> String {
+   let (_, _, _, _, dis) =
+   match lift(addr, Endian::Little, *arch, bin).into_iter().next() {
+      Some(x) => x,
+      None => panic!("Lifting failure") //return Vec::new()
+   };
+   dis
 }
 
 pub fn succ_wrap_upper((sema, fall_addr) : (&Sema, &BitVector)) -> UpperBVSet {
@@ -108,8 +118,8 @@ pub fn succ_wrap_upper((sema, fall_addr) : (&Sema, &BitVector)) -> UpperBVSet {
     }
 }
 
-pub fn sym_wrap(b : &Vec<u8>) -> Vec<BitVector> {
-  Symbol::from_file_contents(&b).into_iter().map(|x|{x.start}).collect::<Vec<_>>()
+pub fn sym_wrap(b : &Vec<u8>) -> Vec<(String, BitVector)> {
+  Symbol::from_file_contents(&b).into_iter().map(|x|{(x.name, x.start)}).collect::<Vec<_>>()
 }
 
 pub fn get_arch_val(v : &Vec<u8>) -> Arch {

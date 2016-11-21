@@ -13,7 +13,6 @@ extern crate url;
 use holmes::{DB, Holmes};
 use getopts::Options;
 use std::env;
-use bap::BitVector;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 use holmes::pg::dyn::values::LargeBWrap;
 
@@ -74,17 +73,21 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
       func!(let find_succs_upper : (sema, bitvector) -> ubvs = analyses::succ_wrap_upper);
       func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
       func!(let lift : (arch, bitvector, bytes) -> (sema, bitvector) = analyses::lift_wrap);
+      func!(let disas : (arch, bitvector, bytes) -> string = analyses::disas_wrap);
       func!(let rebase : (bitvector, bitvector, bitvector, uint64) -> [(uint64, uint64)] = analyses::rebase);
       rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
-      rule!(entry(name, addr) <= file(name, in_bin), {
-        let [ addr ] = {find_syms([in_bin])}
+      rule!(entry(name, sym_name, addr) <= file(name, in_bin), {
+        let [ {sym_name, addr} ] = {find_syms([in_bin])}
       });
-      rule!(live(name, addr) <= entry(name, addr));
+      rule!(live(name, addr) <= entry(name, [_], addr));
       rule!(seglive(name, id, addr, start, end) <= live(name, addr) & segment(name, id, [_], seg_start, seg_end, [_], [_], [_]), {
         let [ {start, end} ] = {rebase([seg_start], [seg_end], [addr], (16))}
       }); 
+      rule!(disasm(name, addr, dis) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
+         let dis = {disas([arch], [addr], [bin])}
+      });
       rule!(sema(name, addr, sema, fall) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
          let sema, fall = {lift([arch], [addr], [bin])}
       });
