@@ -75,8 +75,14 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
       func!(let lift : (arch, bitvector, bytes) -> (sema, bitvector) = analyses::lift_wrap);
       func!(let disas : (arch, bitvector, bytes) -> string = analyses::disas_wrap);
       func!(let rebase : (bitvector, bitvector, bitvector, uint64) -> [(uint64, uint64)] = analyses::rebase);
+      func!(let find_pads : string -> [(string, bitvector)] = analyses::get_pads);
+      func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
+      func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
       rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
+      });
+      rule!(link_pad(bin_name, func_name, addr)  <= file(bin_name, [_]), {
+        let [ {func_name, addr} ] = {find_pads([bin_name])}
       });
       rule!(entry(name, sym_name, addr) <= file(name, in_bin), {
         let [ {sym_name, addr} ] = {find_syms([in_bin])}
@@ -101,6 +107,26 @@ fn holmes_prog(holmes : &mut Holmes, in_path : String) -> holmes::Result<()> {
       rule!(arch(name, arch) <= file(name, contents), {
         let arch = {get_arch_val([contents])}
       });
+
+      //Add stepover edge (this is kinda janky, since this is a place I'd like to circumscribe)
+      //Keep below line as holmes testcase, exercises a bug in sql generation
+      //rule!(succ(name, addr, next) <= link_pad(name, [_], tgt) & sema(name, addr, [_], next) & succ(name, addr, tgt));
+      rule!(succ(name, addr, next) <= succ(name, addr, tgt) & link_pad(name, [_], tgt) & sema(name, addr, [_], next));
+      
+      rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt));
+      rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt));
+
+      rule!(path_alias(name, addr, step, (var::get_ret()), (false)) <= malloc_call(name, addr) & sema(name, addr, [_], step));
+      rule!(path_alias(name, src, next, (var::get_arg0()), (true)) <= path_alias(name, src, free_addr, (var::get_arg0()), [_]) & free_call(name, free_addr) & sema(name, free_addr, [_], next));
+      // Upgrade set on free
+      rule!(path_alias(name, src, cur, var, (true)) <= path_alias(name, src, cur, var, (false)) & path_alias(name, src, cur, [_], (true)));
+      rule!(path_alias(name, src, fut, var2, t) <= path_alias(name, src, cur, var, t) & sema(name, cur, sema, [_]) & succ(name, cur, fut), {
+          let [ var2 ] = {xfer_taint([sema], [var])}
+      });
+      rule!(use_after_free(name, src, loc, var) <= path_alias(name, src, loc, var, (true)) & sema(name, loc, sema, [_]), {
+          let (true) = {deref_var([sema], [var])}
+      });
+
       fact!(file(in_path, in_bin))
     })
 }

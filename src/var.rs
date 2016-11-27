@@ -1,4 +1,7 @@
 use bap::expert::Var;
+use bap;
+use bit_vec::BitVec;
+use bap::expert::Type::BitVector;
 use holmes::pg::dyn::values::{ValueT, ToValue};
 use holmes::pg::dyn::types::TypeT;
 use postgres::Result;
@@ -13,13 +16,38 @@ use rustc_serialize::Decodable;
 
 #[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
 pub struct HVar {
-    inner: Var
+    pub inner: Var,
+    pub offset: Option<bap::bitvector::BitVector>
 }
 
 impl ToJson for HVar {
     fn to_json(&self) -> Json {
         let buf = encode(self).unwrap();
         Json::from_str(&buf).unwrap()
+    }
+}
+
+pub fn get_arg0() -> HVar {
+    HVar {
+        inner: Var {
+            name: "RDI".to_string(),
+            typ: BitVector(64),
+            tmp: false,
+            version: 0
+        },
+        offset: None
+    }
+}
+
+pub fn get_ret() -> HVar {
+    HVar {
+        inner: Var {
+            name: "RAX".to_string(),
+            typ: BitVector(64),
+            tmp: false,
+            version: 0
+        },
+        offset: None
     }
 }
 
@@ -31,11 +59,8 @@ impl TypeT for VarType {
     }
     fn extract(&self, rows : &mut RowIter) -> Value {
         let raw : Json = rows.next().unwrap();
-        let typed : HVar = {
-            let mut decoder = Decoder::new(raw);
-            HVar::decode(&mut decoder).unwrap()
-        };
-        Arc::new(typed)
+        let mut decoder = Decoder::new(raw);
+        Arc::new(HVar::decode(&mut decoder).unwrap())
     }
     fn repr(&self) -> Vec<String> {
         vec!["jsonb".to_string()]

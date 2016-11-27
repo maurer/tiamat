@@ -27,7 +27,14 @@ pub fn setup(holmes : &mut Holmes) -> holmes::Result<()> {
       predicate!(arch(string, arch));
       predicate!(may_jump(string, bitvector, ubvs));
       predicate!(insn_type(string, bitvector, blocktype));
-      //Filename, entry, var, exit, var
-      predicate!(path_alias(string, bitvector, var, bitvector, var))
+      predicate!(linkage(string, string));
+      predicate!(link_pad(string, string, bitvector));
+      //Filename, malloc_site, exit, var, freed
+      predicate!(path_alias(string, bitvector, bitvector, var, bool));
+
+      predicate!(free_call(string, bitvector));
+      predicate!(malloc_call(string, bitvector));
+      //filename, source, errpoint, errvar
+      predicate!(use_after_free(string, bitvector, bitvector, var))
     })
 }
