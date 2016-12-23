@@ -9,6 +9,9 @@ extern crate postgres_array;
 extern crate bit_vec;
 extern crate rustc_serialize;
 extern crate url;
+#[macro_use]
+extern crate log;
+extern crate env_logger;
 
 use holmes::{DB, Holmes};
 use getopts::Options;
@@ -28,6 +31,7 @@ fn url_encode(input : &[u8]) -> String {
 }
 
 fn main() {
+  env_logger::init().unwrap();
   let db_default_addr = match env::var("TIAMAT_PG_SOCK_DIR") {
       Ok(dir) => format!("postgresql://holmes@{}/holmes", url_encode(&dir.into_bytes())),
       _ => format!("postgres://holmes@%2Fvar%2Frun%2Fpostgresql/holmes")
