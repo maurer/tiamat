@@ -11,16 +11,14 @@ repository = "https://github.com/maurer/tiamat"
 num = "*"
 url = "*"
 getopts = "*"
-postgres_array = "0.6"
+postgres_array = "*"
+holmes = "0.1"
 bit-vec = "0.4"
 rustc-serialize = "0.3"
 
 [dependencies.postgres]
-version = "0.11"
-features = ["bit-vec", "rustc-serialize"]
-
-[dependencies.holmes]
-git = "https://github.com/maurer/holmes"
+version = "0.13"
+features = ["with-bit-vec", "with-rustc-serialize"]
 
 [dependencies.bap]
 git = "https://github.com/maurer/bap-rust"
