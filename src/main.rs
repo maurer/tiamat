@@ -44,7 +44,7 @@ fn main() {
     };
     let default_in = "a.out";
     let mut opts = Options::new();
-    opts.optopt("i", "in", "binary to process", default_in);
+    opts.optmulti("i", "in", "binary to process", default_in);
     opts.optopt("d",
                 "database",
                 "database connection string",
@@ -62,12 +62,12 @@ fn main() {
         return;
     }
     let db_addr = matches.opt_str("d").unwrap_or(db_default_addr.to_string());
-    let in_path = matches.opt_str("i").unwrap_or(default_in.to_string());
+    let in_paths = matches.opt_strs("i");
 
     let mut core = Core::new().unwrap();
     let db = PgDB::new(&db_addr).unwrap();
     let mut holmes = Engine::new(db, core.handle());
-    holmes_prog(&mut holmes, in_path).unwrap();
+    holmes_prog(&mut holmes, in_paths).unwrap();
     let stdin = ::std::io::stdin();
     let ls = stdin.lock();
     if matches.opt_present("s") {
@@ -81,15 +81,16 @@ fn main() {
     out_fd.write_all(data.as_bytes()).unwrap();
 }
 
-fn holmes_prog(holmes: &mut Engine, in_path: String) -> Result<()> {
-    let mut in_raw = Vec::new();
-    {
+fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
+    let mut ins = Vec::new();
+    for in_path in in_paths {
         use std::io::Read;
+        let mut in_raw = Vec::new();
         let mut in_file = std::fs::File::open(&in_path).unwrap();
         in_file.read_to_end(&mut in_raw).unwrap();
+        ins.push((in_path, LargeBWrap { inner: in_raw }))
     }
 
-    let in_bin = LargeBWrap { inner: in_raw };
 
     try!(schema::setup(holmes));
 
@@ -150,8 +151,10 @@ fn holmes_prog(holmes: &mut Engine, in_path: String) -> Result<()> {
       });
         rule!(use_after_free(name, src, loc, var) <= path_alias(name, src, loc, var, (true)) & sema(name, loc, sema, [_]), {
           let (true) = {deref_var([sema], [var])}
-      });
-
-        fact!(file(in_path, in_bin))
-    })
+      })
+    })?;
+    for (in_path, in_bin) in ins {
+        fact!(holmes, file(in_path, in_bin))?
+    }
+    Ok(())
 }
