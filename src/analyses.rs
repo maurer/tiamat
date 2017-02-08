@@ -115,6 +115,28 @@ pub fn lift_wrap((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> (Sema, Bit
     })
 }
 
+pub fn is_ret((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> bool {
+    Bap::with(|bap| {
+        let disas = BasicDisasm::new(&bap, *arch).unwrap();
+        {
+            let code = disas.disasm(bin, addr.to_u64().unwrap()).unwrap();
+            let insn = code.insn();
+            insn.is_return()
+        }
+    })
+}
+
+pub fn is_call((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> bool {
+    Bap::with(|bap| {
+        let disas = BasicDisasm::new(&bap, *arch).unwrap();
+        {
+            let code = disas.disasm(bin, addr.to_u64().unwrap()).unwrap();
+            let insn = code.insn();
+            insn.is_call()
+        }
+    })
+}
+
 // TODO: holmes doesn't allow multiple heads yet, so we lift twice to get the disasm
 pub fn disas_wrap((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> String {
     Bap::with(|bap| {

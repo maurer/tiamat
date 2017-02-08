@@ -106,6 +106,8 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         func!(let find_pads : string -> [(string, bitvector)] = analyses::get_pads);
         func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
         func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
+        func!(let is_ret : (arch, bitvector, bytes) -> bool = analyses::is_ret);
+        func!(let is_call : (arch, bitvector, bytes) -> bool = analyses::is_call);
         rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
@@ -125,33 +127,47 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         rule!(sema(name, addr, sema, fall) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
          let {sema, fall} = {lift([arch], [addr], [bin])}
       });
-        rule!(succ(name, src, sink) <= sema(name, src, sema, fall), {
+        rule!(succ(name, src, sink, c) <= sema(name, src, sema, fall) & is_call(name, src, c), {
         let [ sink ] = {find_succs([sema], [fall])}
       });
         rule!(may_jump(name, src, sinks) <= sema(name, src, sema, fall), {
         let sinks = {find_succs_upper([sema], [fall])}
       });
-        rule!(live(name, sink) <= live(name, src) & succ(name, src, sink));
+        rule!(live(name, sink) <= live(name, src) & succ(name, src, sink, [_]));
+        rule!(live(dest_name, sink) <= live(name, src) & path_step(name, src, dest_name, sink));
         rule!(arch(name, arch) <= file(name, contents), {
         let arch = {get_arch_val([contents])}
       });
 
         // Add stepover edge (this is kinda janky, since this is a place I'd like to circumscribe)
-        rule!(succ(name, addr, next) <= succ(name, addr, tgt) & link_pad(name, [_], tgt) & sema(name, addr, [_], next));
+        rule!(succ(name, addr, next, (false)) <= succ(name, addr, tgt, (true)) & link_pad(name, [_], tgt) & sema(name, addr, [_], next));
 
-        rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt));
-        rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt));
+        rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt, (true)));
 
-        rule!(path_alias(name, addr, step, (var::get_ret()), (false)) <= malloc_call(name, addr) & sema(name, addr, [_], step));
-        rule!(path_alias(name, src, next, (var::get_arg0()), (true)) <= path_alias(name, src, free_addr, (var::get_arg0()), [_]) & free_call(name, free_addr) & sema(name, free_addr, [_], next));
+        rule!(path_alias(src_name, addr, src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
+        rule!(path_alias(src_name, src, free_name, next, (var::get_arg0()), (true)) <= path_alias(src_name, src, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
         // Upgrade set on free
-        rule!(path_alias(name, src, cur, var, (true)) <= path_alias(name, src, cur, var, (false)) & path_alias(name, src, cur, [_], (true)));
-        rule!(path_alias(name, src, fut, var2, t) <= path_alias(name, src, cur, var, t) & sema(name, cur, sema, [_]) & succ(name, cur, fut), {
+        rule!(path_alias(name, src, cur_name, cur, var, (true)) <= path_alias(name, src, cur_name, cur, var, (false)) & path_alias(name, src, cur_name, cur, [_], (true)));
+        rule!(path_alias(name, src, next_name, fut, var2, t) <= path_alias(name, src, cur_name, cur, var, t) & sema(cur_name, cur, sema, [_]) & path_step(cur_name, cur, next_name, fut), {
           let [ var2 ] = {xfer_taint([sema], [var])}
       });
-        rule!(use_after_free(name, src, loc, var) <= path_alias(name, src, loc, var, (true)) & sema(name, loc, sema, [_]), {
+        rule!(use_after_free(name, src, other, loc, var) <= path_alias(name, src, other, loc, var, (true)) & sema(other, loc, sema, [_]), {
           let (true) = {deref_var([sema], [var])}
-      })
+      });
+        rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr));
+        rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ(bin_name, addr, addr2, (false)));
+        rule!(path_step(name, src_addr, name, dest_addr) <= succ(name, src_addr, dest_addr, [_]));
+        rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
+        rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr));
+        rule!(path_step(a, b, c, d) <= call_site(a, b, c, d));
+        rule!(path_step(src_name, src_addr, dst_name, dst_addr) <= func(src_name, func_addr, src_addr) & is_ret(src_name, src_addr) & call_site(dst_name, call_addr, src_name, func_addr) & sema(dst_name, call_addr, [_], dst_addr));
+        rule!(is_ret(name, addr) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
+            let (true) = {is_ret([arch], [addr], [bin])}
+        });
+        rule!(is_call(name, addr, call) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
+            let call = {is_call([arch], [addr], [bin])}
+        })
     })?;
     for (in_path, in_bin) in ins {
         fact!(holmes, file(in_path, in_bin))?
