@@ -12,14 +12,18 @@ num = "*"
 url = "*"
 getopts = "*"
 postgres_array = "*"
-holmes = "0.1"
 bit-vec = "0.4"
 rustc-serialize = "0.3"
+log = "0.3"
+env_logger = "0.3"
 
 [dependencies.postgres]
 version = "0.13"
 features = ["with-bit-vec", "with-rustc-serialize"]
 
+[dependencies.holmes]
+path = "../holmes"
+
 [dependencies.bap]
-git = "https://github.com/maurer/bap-rust"
+path = "../bap-rust"
 features = ["holmes_support", "json"]
