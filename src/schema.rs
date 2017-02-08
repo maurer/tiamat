@@ -41,6 +41,6 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(free_call(string, bitvector));
         predicate!(malloc_call(string, bitvector));
         // filename, source, errpoint, errvar
-        predicate!(use_after_free(string, bitvector, bitvector, var))
+        predicate!(use_after_free([binary string], [source bitvector "Allocation site for the use-after-free"], [sink bitvector "Use site for the use after free"], [qq var "Where the pointer was when it was dereferenced"]) : "Possible use-after-free paths")
     })
 }

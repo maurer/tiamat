@@ -103,6 +103,10 @@ impl ToValue for HVar {
 // TODO placeholder
 impl ::std::fmt::Display for HVar {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
-        write!(f, "{:?}", self)
+        write!(f, "{}", self.inner)?;
+        match self.offset {
+            Some(ref off) => write!(f, "+{}", off),
+            None => Ok(()),
+        }
     }
 }

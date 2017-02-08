@@ -338,6 +338,6 @@ fn deref_var_step(stmt: &Statement, var: &HVar) -> bool {
         Move { rhs: ref e, .. } => deref_var_expr(e, var),
         _ => false,
     };
-    println!("{:?}: {:?} -> {:?}", stmt, var, res);
+    trace!("{:?}: {:?} -> {:?}", stmt, var, res);
     res
 }

@@ -20,6 +20,7 @@ use getopts::Options;
 use std::env;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 use holmes::pg::dyn::values::LargeBWrap;
+use std::io::Write;
 
 mod analyses;
 mod schema;
@@ -74,7 +75,10 @@ fn main() {
             core.turn(None);
         }
     }
-    core.run(holmes.quiesce()).unwrap()
+    core.run(holmes.quiesce()).unwrap();
+    let data = holmes.render(&"use_after_free".to_string()).unwrap();
+    let mut out_fd = std::fs::File::create("out.html").unwrap();
+    out_fd.write_all(data.as_bytes()).unwrap();
 }
 
 fn holmes_prog(holmes: &mut Engine, in_path: String) -> Result<()> {
