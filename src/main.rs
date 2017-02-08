@@ -9,7 +9,8 @@ extern crate postgres_array;
 extern crate bit_vec;
 extern crate rustc_serialize;
 extern crate url;
-
+extern crate env_logger;
+use std::io::BufRead;
 use holmes::PgDB;
 use holmes::simple::*;
 use getopts::Options;
@@ -43,6 +44,9 @@ fn main() {
                 "database connection string",
                 &db_default_addr);
     opts.optflag("h", "help", "print usage and exit");
+    opts.optflag("s",
+                 "step",
+                 "single step when enter is hit, close stdin to go to quiescence");
     let mut args = env::args();
     let prog_name = args.next().unwrap();
     let matches = opts.parse(args).unwrap_or_else(|x| panic!(x));
@@ -58,6 +62,14 @@ fn main() {
     let db = PgDB::new(&db_addr).unwrap();
     let mut holmes = Engine::new(db, core.handle());
     holmes_prog(&mut holmes, in_path).unwrap();
+    env_logger::init().unwrap();
+    let stdin = ::std::io::stdin();
+    let ls = stdin.lock();
+    if matches.opt_present("s") {
+        for line in ls.lines() {
+            core.turn(None);
+        }
+    }
     core.run(holmes.quiesce()).unwrap()
 }
 
