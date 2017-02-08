@@ -26,8 +26,13 @@ impl ToJson for Sema {
 #[derive(Debug,Clone,Hash,PartialEq)]
 pub struct SemaType;
 impl TypeT for SemaType {
+    typet_inner!();
+    typet_inner_eq!();
     fn name(&self) -> Option<&'static str> {
         Some("sema")
+    }
+    fn large_unique(&self) -> bool {
+        true
     }
     fn extract(&self, rows: &mut RowIter) -> Option<Value> {
         let raw: Json = rows.next().unwrap();
@@ -40,7 +45,6 @@ impl TypeT for SemaType {
     fn repr(&self) -> Vec<String> {
         vec!["jsonb".to_string()]
     }
-    typet_boiler!();
 }
 
 impl ValueT for Sema {
