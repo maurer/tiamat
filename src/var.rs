@@ -20,6 +20,12 @@ pub struct HVar {
     pub offset: Option<BitVector>,
 }
 
+impl HVar {
+    pub fn not_temp(&self) -> bool {
+        !self.inner.tmp
+    }
+}
+
 impl ToJson for HVar {
     fn to_json(&self) -> Json {
         let buf = encode(self).unwrap();

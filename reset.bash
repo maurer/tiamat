@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-psql postgres -c 'drop database holmes'
+psql postgres -h /anvil/data/$1 -c 'drop database holmes'

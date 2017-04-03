@@ -27,3 +27,6 @@ path = "../holmes"
 [dependencies.bap]
 path = "../bap-rust"
 features = ["holmes_support", "json"]
+
+[profile.release]
+debug = true

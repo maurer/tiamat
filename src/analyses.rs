@@ -7,6 +7,59 @@ use std::cmp::min;
 use num::ToPrimitive;
 use holmes::pg::dyn::values::LargeBWrap;
 use var::HVar;
+use bvlist::BVList;
+use stack::Stack;
+
+pub fn find_parent((sym_bin, sym_name, sym_start, sym_end, src, stack, suff): (&String,
+                                                                               &String,
+                                                                               &BitVector,
+                                                                               &BitVector,
+                                                                               &BitVector,
+                                                                               &Stack,
+                                                                               &String))
+                   -> Vec<String> {
+    if !sym_name.ends_with(suff) {
+        // This isn't one o fthe symbols we're supposed to find stuff in
+        return vec![];
+    }
+    let mut addrs: Vec<_> = (stack.1)
+        .0
+        .iter()
+        .zip(stack.0.iter())
+        .filter_map(|(addr, name)| if name == sym_bin { Some(addr) } else { None })
+        .collect();
+    addrs.push(src);
+    for addr in addrs {
+        if (addr < sym_end) && (addr >= sym_start) {
+            trace!("Bad address found: {} <= {} <= {} -> {}\tsrc={}\tstack={}",
+                   sym_start,
+                   addr,
+                   sym_end,
+                   sym_name,
+                   src,
+                   stack);
+            return vec![sym_name.clone()];
+        }
+    }
+    vec![]
+}
+
+pub fn pop_stack(stack: &Stack) -> Vec<(Stack, String, BitVector)> {
+    let mut ns = stack.0.clone();
+    let mut ads = (stack.1).0.clone();
+    match (ns.pop(), ads.pop()) {
+        (Some(name), Some(addr)) => vec![(Stack(ns, BVList(ads)), name, addr)],
+        _ => vec![],
+    }
+}
+
+pub fn push_stack((stack, name, tgt): (&Stack, &String, &BitVector)) -> Stack {
+    let mut ns = stack.0.clone();
+    let mut ads = (stack.1).0.clone();
+    ns.push(name.clone());
+    ads.push(tgt.clone());
+    Stack(ns, BVList(ads))
+}
 
 pub fn rebase((base, end, addr, len): (&BitVector, &BitVector, &BitVector, &u64))
               -> Vec<(u64, u64)> {
@@ -159,13 +212,17 @@ pub fn succ_wrap_upper((sema, fall_addr): (&Sema, &BitVector)) -> UpperBVSet {
     }
 }
 
-pub fn sym_wrap(b: &Vec<u8>) -> Vec<(String, BitVector)> {
+pub fn sym_wrap(b: &Vec<u8>) -> Vec<(String, BitVector, BitVector)> {
     Bap::with(|bap| {
         let image = Image::from_data(&bap, b).unwrap();
         let out = {
             let syms = image.symbols();
             let out = syms.iter()
-                .map(|x| (x.name(), BitVector::from_basic(&x.memory().min_addr())))
+                .map(|x| {
+                    (x.name(),
+                     BitVector::from_basic(&x.memory().min_addr()),
+                     BitVector::from_basic(&x.memory().max_addr()))
+                })
                 .collect();
             out
         };
@@ -327,7 +384,12 @@ fn proc_stmt(bad: Vec<HVar>, stmt: &Statement) -> Vec<HVar> {
 }
 
 pub fn xfer_taint((sema, var): (&Sema, &HVar)) -> Vec<HVar> {
-    sema.stmts.iter().fold(vec![var.clone()], proc_stmt)
+    sema.stmts
+        .iter()
+        .fold(vec![var.clone()], proc_stmt)
+        .into_iter()
+        .filter(|v| v.not_temp())
+        .collect()
 }
 
 pub fn deref_var((sema, var): (&Sema, &HVar)) -> bool {
