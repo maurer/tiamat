@@ -81,8 +81,16 @@ fn main() {
         }
     }
     core.run(holmes.quiesce()).unwrap();
-    let data = holmes.render(&"true_positive_fixed".to_string()).unwrap();
-    let mut out_fd = std::fs::File::create("out2.html").unwrap();
+    dump(&mut holmes, "disasm");
+    dump(&mut holmes, "succ");
+    dump(&mut holmes, "true_positive");
+    dump(&mut holmes, "false_positive");
+    dump(&mut holmes, "use_after_free");
+}
+
+fn dump(holmes: &mut Engine, target: &str) {
+    let data = holmes.render(&target.to_string()).unwrap();
+    let mut out_fd = std::fs::File::create(format!("{}.html", target)).unwrap();
     out_fd.write_all(data.as_bytes()).unwrap();
 }
 
@@ -143,6 +151,13 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         let sinks = {find_succs_upper([sema], [fall])}
       });
         rule!(live(name, sink) <= live(name, src) & succ(name, src, sink, [_]));
+        rule!(live(name, fall) <= sema(name, src, [_], fall) & is_call(name, src, (true)));
+        rule!(is_ret(name, addr) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
+            let (true) = {is_ret([arch], [addr], [bin])}
+        });
+        rule!(is_call(name, addr, call) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
+            let call = {is_call([arch], [addr], [bin])}
+        });
         rule!(arch(name, arch) <= file(name, contents), {
         let arch = {get_arch_val([contents])}
       });
@@ -186,14 +201,8 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ(bin_name, addr, addr2, (false)));
         rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
         rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr, [_]));
-        rule!(is_ret(name, addr) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
-            let (true) = {is_ret([arch], [addr], [bin])}
-        });
-        rule!(is_call(name, addr, call) <= seglive(name, id, addr, start, end) & segment(name, id, {[start], [end], bin}, [_], [_], [_], [_], [_]) & arch(name, arch), {
-            let call = {is_call([arch], [addr], [bin])}
-        });
-        // TODO there's a bit of overrestriction on name here
-        rule!(true_positive_fixed(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
+       // TODO there's a bit of overrestriction on name here
+        rule!(true_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
             let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_bad"))}
         });
         rule!(false_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
