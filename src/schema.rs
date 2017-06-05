@@ -53,6 +53,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(is_ret([binary string], [addr bitvector]) : "Instruction at this address is a conventional return");
         predicate!(is_call([binary string], [addr bitvector], bool));
         predicate!(true_positive([binary string], [addr bitvector], [bad_parent string]));
-        predicate!(false_positive([binary string], [addr bitvector], [good_parent string]))
+        predicate!(false_positive([binary string], [addr bitvector], [good_parent string]));
+        predicate!(deb_file([deb_name string], [contents largebytes]))
     })
 }

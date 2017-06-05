@@ -9,6 +9,58 @@ use holmes::pg::dyn::values::LargeBWrap;
 use var::HVar;
 use bvlist::BVList;
 use stack::Stack;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+
+pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
+    use std::fs::File;
+    use std::io::prelude::*;
+    use mktemp::Temp;
+    use std::path::Path;
+    use std::ffi::OsStr;
+    let mut buf = Vec::new();
+    fd.read_to_end(&mut buf).unwrap();
+    let deb_temp = Temp::new_file().unwrap();
+    let deb_path_buf = deb_temp.to_path_buf();
+    let deb_path = deb_path_buf.to_str().unwrap();
+    {
+        let mut deb_file = File::create(deb_path).unwrap();
+        deb_file.write_all(&buf).unwrap();
+    }
+    let mut unpack_temp_dir = Temp::new_dir().unwrap();
+    let unpack_path_buf = unpack_temp_dir.to_path_buf();
+    let unpack_path = unpack_path_buf.to_str().unwrap();
+    Command::new("dpkg")
+        .args(&["-x", deb_path, unpack_path])
+        .output()
+        .expect("failed to unpack");
+    let find_out = Command::new("find")
+        .args(&[unpack_path,
+                "-exec",
+                "bash",
+                "-c",
+                "file {} | grep -c ELF &>/dev/null",
+                ";",
+                "-print"])
+        .output()
+        .expect("failed to search unpack directory");
+    let lines = find_out.stdout.lines();
+    lines
+        .map(|line| {
+            let raw_path = line.unwrap();
+            let path = Path::new(&raw_path);
+            let file_name = path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+            let mut elf_file = File::open(path).unwrap();
+            let mut out = Vec::new();
+            elf_file.read_to_end(&mut out).unwrap();
+            (file_name, LargeBWrap { inner: out })
+        })
+        .collect()
+}
 
 pub fn find_parent((sym_bin, sym_name, sym_start, sym_end, src, stack, suff): (&String,
                                                                                &String,
@@ -85,8 +137,9 @@ fn fresh() -> u64 {
     }
 }
 
-pub fn seg_wrap(contents: &Vec<u8>)
-                -> Vec<(u64, LargeBWrap, BitVector, BitVector, bool, bool, bool)> {
+pub fn seg_wrap(mut fd: &File) -> Vec<(u64, LargeBWrap, BitVector, BitVector, bool, bool, bool)> {
+    let mut contents = Vec::new();
+    fd.read_to_end(&mut contents).unwrap();
     Bap::with(|bap| {
         let image = Image::from_data(&bap, &contents).unwrap();
         let out = {
@@ -128,7 +181,11 @@ pub fn stmt_succ(stmts: &[Statement]) -> (Vec<BitVector>, bool) {
                 (tgts, fall)
             }
         }
-        &IfThenElse { cond: _, ref then_clause, ref else_clause } => {
+        &IfThenElse {
+             cond: _,
+             ref then_clause,
+             ref else_clause,
+         } => {
             let (mut then_tgts, then_fall) = stmt_succ(&then_clause);
             let (mut else_tgts, else_fall) = stmt_succ(&else_clause);
             let fall = then_fall || else_fall;
@@ -155,51 +212,70 @@ pub fn successors((sema, fall_addr): (&Sema, &BitVector)) -> Vec<BitVector> {
     targets
 }
 
-pub fn lift_wrap((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> (Sema, BitVector) {
+pub fn lift_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64))
+                 -> (Sema, BitVector) {
+    let mut bin: [u8; 16] = [0; 16];
+    fd.seek(SeekFrom::Start(*start)).unwrap();
+    fd.read_exact(&mut bin).unwrap();
     Bap::with(|bap| {
         let disas = BasicDisasm::new(&bap, *arch).unwrap();
-        let code = disas.disasm(bin, addr.to_u64().unwrap()).unwrap();
+        let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
         let len = code.len();
         let fall = addr + len;
         let insn = code.insn();
         let sema = insn.semantics();
-        let stmts: Vec<_> = sema.iter().map(|bb| Statement::from_basic(&bb)).collect();
+        let stmts: Vec<_> = sema.iter()
+            .map(|bb| Statement::from_basic(&bb))
+            .collect();
         (Sema { stmts: stmts }, fall)
     })
 }
 
-pub fn is_ret((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> bool {
+pub fn is_ret((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> bool {
+    let mut bin: [u8; 16] = [0; 16];
+    fd.seek(SeekFrom::Start(*start)).unwrap();
+    fd.read_exact(&mut bin).unwrap();
+
     Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch).unwrap();
-        {
-            let code = disas.disasm(bin, addr.to_u64().unwrap()).unwrap();
-            let insn = code.insn();
-            insn.is_return()
-        }
-    })
+                  let disas = BasicDisasm::new(&bap, *arch).unwrap();
+                  {
+                      let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
+                      let insn = code.insn();
+                      insn.is_return()
+                  }
+              })
 }
 
-pub fn is_call((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> bool {
+pub fn is_call((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> bool {
+    let mut bin: [u8; 16] = [0; 16];
+    fd.seek(SeekFrom::Start(*start)).unwrap();
+    fd.read_exact(&mut bin).unwrap();
+
     Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch).unwrap();
-        {
-            let code = disas.disasm(bin, addr.to_u64().unwrap()).unwrap();
-            let insn = code.insn();
-            insn.is_call()
-        }
-    })
+                  let disas = BasicDisasm::new(&bap, *arch).unwrap();
+                  {
+                      let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
+                      let insn = code.insn();
+                      insn.is_call()
+                  }
+              })
 }
 
 // TODO: holmes doesn't allow multiple heads yet, so we lift twice to get the disasm
-pub fn disas_wrap((arch, addr, bin): (&Arch, &BitVector, &Vec<u8>)) -> String {
+pub fn disas_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> String {
+
+    let mut bin: [u8; 16] = [0; 16];
+    fd.seek(SeekFrom::Start(*start)).unwrap();
+    fd.read_exact(&mut bin).unwrap();
+
     Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch).unwrap();
-        let out = {
-            let code = disas.disasm(bin, addr.to_u64().unwrap()).unwrap();
-            code.insn().to_string()
-        };
-        out
-    })
+                  let disas = BasicDisasm::new(&bap, *arch).unwrap();
+                  let out = {
+                      let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
+                      code.insn().to_string()
+                  };
+                  out
+              })
 }
 
 pub fn succ_wrap_upper((sema, fall_addr): (&Sema, &BitVector)) -> UpperBVSet {
@@ -212,17 +288,19 @@ pub fn succ_wrap_upper((sema, fall_addr): (&Sema, &BitVector)) -> UpperBVSet {
     }
 }
 
-pub fn sym_wrap(b: &Vec<u8>) -> Vec<(String, BitVector, BitVector)> {
+pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
+    let mut b = Vec::new();
+    fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
-        let image = Image::from_data(&bap, b).unwrap();
+        let image = Image::from_data(&bap, &b).unwrap();
         let out = {
             let syms = image.symbols();
             let out = syms.iter()
                 .map(|x| {
-                    (x.name(),
-                     BitVector::from_basic(&x.memory().min_addr()),
-                     BitVector::from_basic(&x.memory().max_addr()))
-                })
+                         (x.name(),
+                          BitVector::from_basic(&x.memory().min_addr()),
+                          BitVector::from_basic(&x.memory().max_addr()))
+                     })
                 .collect();
             out
         };
@@ -230,11 +308,13 @@ pub fn sym_wrap(b: &Vec<u8>) -> Vec<(String, BitVector, BitVector)> {
     })
 }
 
-pub fn get_arch_val(v: &Vec<u8>) -> Arch {
+pub fn get_arch_val(mut fd: &File) -> Arch {
+    let mut b = Vec::new();
+    fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
-        let image = Image::from_data(&bap, v).unwrap();
-        image.arch().unwrap()
-    })
+                  let image = Image::from_data(&bap, &b).unwrap();
+                  image.arch().unwrap()
+              })
 }
 
 use std::process::Command;
@@ -242,22 +322,22 @@ use num::{BigUint, FromPrimitive};
 // TODO - get rid of objdump; stop using filename and use contents
 pub fn get_pads(v: &String) -> Vec<(String, BitVector)> {
     let out: String = String::from_utf8(Command::new("bash")
-            .arg("-c")
-            .arg(format!("objdump -d {} | grep plt\\>:", v))
-            .output()
-            .expect("objdump grep pipeline failure")
-            .stdout)
-        .unwrap();
+                                            .arg("-c")
+                                            .arg(format!("objdump -d {} | grep plt\\>:", v))
+                                            .output()
+                                            .expect("objdump grep pipeline failure")
+                                            .stdout)
+            .unwrap();
     out.split("\n")
         .filter(|x| *x != "")
         .map(|line| {
-            let mut it = line.split(" ");
-            let addr64 = u64::from_str_radix(it.next().unwrap(), 16).unwrap();
-            let addr = BitVector::new_unsigned(BigUint::from_u64(addr64).unwrap(), 64);
-            let unparsed = it.next().expect(&format!("No name? {}", line));
-            let name = unparsed[1..].split("@").next().unwrap();
-            (name.to_string(), addr)
-        })
+                 let mut it = line.split(" ");
+                 let addr64 = u64::from_str_radix(it.next().unwrap(), 16).unwrap();
+                 let addr = BitVector::new_unsigned(BigUint::from_u64(addr64).unwrap(), 64);
+                 let unparsed = it.next().expect(&format!("No name? {}", line));
+                 let name = unparsed[1..].split("@").next().unwrap();
+                 (name.to_string(), addr)
+             })
         .collect()
 }
 
@@ -265,9 +345,9 @@ fn hv_match(bad: &Vec<HVar>, e: &Expression) -> bool {
     match *e {
         Expression::Var(ref v) => {
             bad.contains(&HVar {
-                inner: v.clone(),
-                offset: None,
-            })
+                              inner: v.clone(),
+                              offset: None,
+                          })
         }
         Expression::Load { index: ref idx, .. } => {
             match promote_idx(idx) {
@@ -308,19 +388,23 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
     match *idx {
         Expression::Var(ref v) => {
             Some(HVar {
-                inner: v.clone(),
-                offset: Some(BitVector::new_unsigned(BigUint::from_u32(0).unwrap(), 64)),
-            })
+                     inner: v.clone(),
+                     offset: Some(BitVector::new_unsigned(BigUint::from_u32(0).unwrap(), 64)),
+                 })
         }
-        Expression::BinOp { op: BinOp::Add, lhs: ref lhs, rhs: ref rhs } => {
+        Expression::BinOp {
+            op: BinOp::Add,
+            lhs: ref lhs,
+            rhs: ref rhs,
+        } => {
             match **lhs {
                 Expression::Var(ref v) => {
                     match **rhs {
                         Expression::Const(ref bv) => {
                             Some(HVar {
-                                inner: v.clone(),
-                                offset: Some(bv.clone()),
-                            })
+                                     inner: v.clone(),
+                                     offset: Some(bv.clone()),
+                                 })
                         }
                         _ => None,
                     }
@@ -329,9 +413,9 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
                     match **rhs {
                         Expression::Var(ref v) => {
                             Some(HVar {
-                                inner: v.clone(),
-                                offset: Some(bv.clone()),
-                            })
+                                     inner: v.clone(),
+                                     offset: Some(bv.clone()),
+                                 })
                         }
                         _ => None,
                     }
@@ -347,7 +431,10 @@ fn proc_stmt(bad: Vec<HVar>, stmt: &Statement) -> Vec<HVar> {
     use bap::high::bil::Statement::*;
     match *stmt {
         // Register update
-        Move { lhs: ref reg, rhs: ref e } if is_reg(&reg) => {
+        Move {
+            lhs: ref reg,
+            rhs: ref e,
+        } if is_reg(&reg) => {
             if hv_match(&bad, &e) {
                 add_hvar(bad,
                          HVar {
@@ -363,13 +450,18 @@ fn proc_stmt(bad: Vec<HVar>, stmt: &Statement) -> Vec<HVar> {
             }
         }
         // Memory Write
-        Move { lhs: ref mem, rhs: ref e } if is_mem(&mem) => {
+        Move {
+            lhs: ref mem,
+            rhs: ref e,
+        } if is_mem(&mem) => {
             match *e {
-                Expression::Store { memory: _,
-                                    index: ref idx,
-                                    value: ref val,
-                                    endian: _,
-                                    size: _ } => {
+                Expression::Store {
+                    memory: _,
+                    index: ref idx,
+                    value: ref val,
+                    endian: _,
+                    size: _,
+                } => {
                     if hv_match(&bad, &val) {
                         promote_idx(idx).map_or(bad.clone(), |hidx| add_hvar(bad, hidx))
                     } else {
