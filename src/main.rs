@@ -136,28 +136,28 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
     try!(schema::setup(holmes));
 
     holmes_exec!(holmes, {
-        func!(let get_arch_val : largebytes -> uint64 = analyses::get_arch_val);
+        func!(let get_arch_val : largebytes -> [uint64] = analyses::get_arch_val);
         func!(let seg_wrap : largebytes -> [(largebytes, uint64, bitvector, bitvector, bool, bool, bool)] = analyses::seg_wrap);
         func!(let find_succs : (sema, bitvector) -> [bitvector] = analyses::successors);
         func!(let find_succs_upper : (sema, bitvector) -> ubvs = analyses::succ_wrap_upper);
         func!(let find_syms  : bytes -> [bitvector] = analyses::sym_wrap);
-        func!(let lift : (arch, bitvector, largebytes, uint64) -> (sema, bitvector) = analyses::lift_wrap);
-        func!(let disas : (arch, bitvector, largebytes, uint64) -> string = analyses::disas_wrap);
+        func!(let lift : (arch, bitvector, largebytes, uint64) -> [(sema, bitvector)] = analyses::lift_wrap);
+        func!(let disas : (arch, bitvector, largebytes, uint64) -> [string] = analyses::disas_wrap);
         func!(let rebase : (bitvector, bitvector, bitvector, uint64) -> [(uint64, uint64)] = analyses::rebase);
-        func!(let find_pads : string -> [(string, bitvector)] = analyses::get_pads);
+        func!(let find_pads : largebytes -> [(string, bitvector)] = analyses::get_pads);
         func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
         func!(let push_stack : (stack, string, bitvector) -> stack = analyses::push_stack);
         func!(let pop_stack : stack -> [(stack, string, bitvector)] = analyses::pop_stack);
         func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
-        func!(let is_ret : (arch, bitvector, largebytes, uint64) -> bool = analyses::is_ret);
-        func!(let is_call : (arch, bitvector, largebytes, uint64) -> bool = analyses::is_call);
+        func!(let is_ret : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_ret);
+        func!(let is_call : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_call);
         func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
         func!(let unpack_deb : largebytes -> [(string, largebytes)] = analyses::unpack_deb);
         rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
-        rule!(link_pad(bin_name, func_name, addr)  <= file(bin_name, [_]), {
-        let [ {func_name, addr} ] = {find_pads([bin_name])}
+        rule!(link_pad(bin_name, func_name, addr)  <= file(bin_name, contents), {
+        let [ {func_name, addr} ] = {find_pads([contents])}
       });
         rule!(entry(name, sym_name, addr, end) <= file(name, in_bin), {
         let [ {sym_name, addr, end} ] = {find_syms([in_bin])}
@@ -167,10 +167,10 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         let [ {start, end} ] = {rebase([seg_start], [seg_end], [addr], (16))}
       });
         rule!(disasm(name, addr, dis) <= seglive(name, id, addr, start, end) & segment(name, id, bin, [_], [_], [_], [_], [_]) & arch(name, arch), {
-         let dis = {disas([arch], [addr], [bin], [start])}
+         let [ dis ] = {disas([arch], [addr], [bin], [start])}
       });
         rule!(sema(name, addr, sema, fall) <= seglive(name, id, addr, start, end) & segment(name, id, bin, [_], [_], [_], [_], [_]) & arch(name, arch), {
-         let {sema, fall} = {lift([arch], [addr], [bin], [start])}
+         let [ {sema, fall} ] = {lift([arch], [addr], [bin], [start])}
       });
         rule!(succ(name, src, sink, c) <= sema(name, src, sema, fall) & is_call(name, src, c), {
         let [ sink ] = {find_succs([sema], [fall])}
@@ -181,13 +181,13 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         rule!(live(name, sink) <= live(name, src) & succ(name, src, sink, [_]));
         rule!(live(name, fall) <= sema(name, src, [_], fall) & is_call(name, src, (true)));
         rule!(is_ret(name, addr) <= seglive(name, id, addr, start, end) & segment(name, id, bin, [_], [_], [_], [_], [_]) & arch(name, arch), {
-            let (true) = {is_ret([arch], [addr], [bin], [start])}
+            let [ (true) ] = {is_ret([arch], [addr], [bin], [start])}
         });
         rule!(is_call(name, addr, call) <= seglive(name, id, addr, start, end) & segment(name, id, bin, [_], [_], [_], [_], [_]) & arch(name, arch), {
-            let call = {is_call([arch], [addr], [bin], [start])}
+            let [ call ] = {is_call([arch], [addr], [bin], [start])}
         });
         rule!(arch(name, arch) <= file(name, contents), {
-        let arch = {get_arch_val([contents])}
+        let [ arch ] = {get_arch_val([contents])}
       });
 
         // Add stepover edge (this is kinda janky, since this is a place I'd like to circumscribe)

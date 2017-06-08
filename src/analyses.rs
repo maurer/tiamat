@@ -1,6 +1,7 @@
 use bap::basic::{Image, Segment, Arch, Endian, Symbol, Bap, BasicDisasm};
 use bap::high::bil::{Statement, Expression, Variable, Type, BinOp};
 use bap::high::bitvector::BitVector;
+use bap;
 use ubvs::UpperBVSet;
 use sema::Sema;
 use std::cmp::min;
@@ -11,6 +12,15 @@ use bvlist::BVList;
 use stack::Stack;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+
+macro_rules! get_image {
+    ($bap:expr, $contents:expr) => {{
+        match Image::from_data(&$bap, &$contents) {
+            Ok(i) => i,
+            Err(_) => return vec![]
+        }
+    }}
+}
 
 pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
     use std::fs::File;
@@ -141,7 +151,7 @@ pub fn seg_wrap(mut fd: &File) -> Vec<(u64, LargeBWrap, BitVector, BitVector, bo
     let mut contents = Vec::new();
     fd.read_to_end(&mut contents).unwrap();
     Bap::with(|bap| {
-        let image = Image::from_data(&bap, &contents).unwrap();
+        let image = get_image!(bap, contents);
         let out = {
             let segs = image.segments();
             segs.iter()
@@ -213,13 +223,13 @@ pub fn successors((sema, fall_addr): (&Sema, &BitVector)) -> Vec<BitVector> {
 }
 
 pub fn lift_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64))
-                 -> (Sema, BitVector) {
+                 -> Vec<(Sema, BitVector)> {
     let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
     fd.read_exact(&mut bin).unwrap();
-    Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch).unwrap();
-        let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
+    to_vec(Bap::with(|bap| {
+        let disas = BasicDisasm::new(&bap, *arch)?;
+        let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
         let len = code.len();
         let fall = addr + len;
         let insn = code.insn();
@@ -227,55 +237,62 @@ pub fn lift_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64))
         let stmts: Vec<_> = sema.iter()
             .map(|bb| Statement::from_basic(&bb))
             .collect();
-        (Sema { stmts: stmts }, fall)
-    })
+        Ok((Sema { stmts: stmts }, fall))
+    }))
 }
 
-pub fn is_ret((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> bool {
+pub fn is_ret((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> Vec<bool> {
     let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
     fd.read_exact(&mut bin).unwrap();
 
-    Bap::with(|bap| {
-                  let disas = BasicDisasm::new(&bap, *arch).unwrap();
-                  {
-                      let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
-                      let insn = code.insn();
-                      insn.is_return()
-                  }
-              })
+    to_vec(Bap::with(|bap| {
+                         let disas = BasicDisasm::new(&bap, *arch)?;
+                         {
+                             let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+                             let insn = code.insn();
+                             Ok(insn.is_return())
+                         }
+                     }))
 }
 
-pub fn is_call((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> bool {
+fn to_vec<T>(r: bap::basic::Result<T>) -> Vec<T> {
+    match r {
+        Ok(x) => vec![x],
+        _ => vec![],
+    }
+}
+
+pub fn is_call((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> Vec<bool> {
     let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
     fd.read_exact(&mut bin).unwrap();
 
-    Bap::with(|bap| {
-                  let disas = BasicDisasm::new(&bap, *arch).unwrap();
-                  {
-                      let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
-                      let insn = code.insn();
-                      insn.is_call()
-                  }
-              })
+    to_vec(Bap::with(|bap| {
+                         let disas = BasicDisasm::new(&bap, *arch)?;
+                         {
+                             let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+                             let insn = code.insn();
+                             Ok(insn.is_call())
+                         }
+                     }))
 }
 
 // TODO: holmes doesn't allow multiple heads yet, so we lift twice to get the disasm
-pub fn disas_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> String {
+pub fn disas_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> Vec<String> {
 
     let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
     fd.read_exact(&mut bin).unwrap();
 
-    Bap::with(|bap| {
-                  let disas = BasicDisasm::new(&bap, *arch).unwrap();
-                  let out = {
-                      let code = disas.disasm(&bin, addr.to_u64().unwrap()).unwrap();
-                      code.insn().to_string()
-                  };
-                  out
-              })
+    to_vec(Bap::with(|bap| {
+                         let disas = BasicDisasm::new(&bap, *arch)?;
+                         let out = {
+                             let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+                             code.insn().to_string()
+                         };
+                         Ok(out)
+                     }))
 }
 
 pub fn succ_wrap_upper((sema, fall_addr): (&Sema, &BitVector)) -> UpperBVSet {
@@ -292,7 +309,7 @@ pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
     let mut b = Vec::new();
     fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
-        let image = Image::from_data(&bap, &b).unwrap();
+        let image = get_image!(bap, b);
         let out = {
             let syms = image.symbols();
             let out = syms.iter()

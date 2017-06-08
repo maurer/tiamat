@@ -46,9 +46,11 @@ impl TypeT for UBVSType {
     fn extract(&self, rows: &mut RowIter) -> Option<Value> {
         let raw: Option<Array<BitVec>> = rows.next().unwrap();
         Some(Arc::new(match raw {
-            None => UpperBVSet::Top,
-            Some(repr) => UpperBVSet::BVSet(repr.iter().map(|bv| BitVector::new(bv)).collect()),
-        }))
+                          None => UpperBVSet::Top,
+                          Some(repr) => {
+                              UpperBVSet::BVSet(repr.iter().map(|bv| BitVector::new(bv)).collect())
+                          }
+                      }))
     }
     fn repr(&self) -> Vec<String> {
         vec!["bit varying[]".to_string()]

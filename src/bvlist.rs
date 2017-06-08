@@ -16,7 +16,7 @@ pub struct BVList(pub Vec<BitVector>);
 
 impl ::std::fmt::Display for BVList {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
-        use ::std::fmt::Debug;
+        use std::fmt::Debug;
         self.0.fmt(f)
     }
 }

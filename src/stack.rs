@@ -17,7 +17,7 @@ pub struct Stack(pub Vec<String>, pub BVList);
 
 impl ::std::fmt::Display for Stack {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
-        use ::std::fmt::Debug;
+        use std::fmt::Debug;
         self.0.fmt(f)?;
         (self.1).0.fmt(f)
     }
