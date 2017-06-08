@@ -7,19 +7,19 @@ before_cache:
   - rm -rf $HOME/.opam/log
 before_script:
   # Install bap
-  - opam init -y
-  - eval `opam config env`
-  - travis_wait opam pin add bap git://github.com/maurer/bap#stable -y
-  # Fetch libbap, since travis doesn't do recursive submodules
-  - git submodule update --init --recursive
-  # Install libbap
-  - opam install -y oasis
-  - cd libbap
-  - oasis setup
-  - ./configure --prefix $HOME/.local
-  - make
-  - make install
-  - cd ..
+  - export BAP_VERSION=1.2.0
+  - wget https://github.com/BinaryAnalysisPlatform/bap/releases/download/v$BAP_VERSION/bap-$BAP_VERSION.tgz
+  - wget https://github.com/BinaryAnalysisPlatform/bap/releases/download/v$BAP_VERSION/libbap-$BAP_VERSION.tgz
+  - wget https://github.com/BinaryAnalysisPlatform/bap/releases/download/v$BAP_VERSION/libbap-dev-$BAP_VERSION.tgz
+  - tar xf bap-$BAP_VERSION.tgz
+  - tar xf libbap-$BAP_VERSION.tgz
+  - tar xf libbap-dev-$BAP_VERSION.tgz
+  - mkdir -p $HOME/.local/bap
+  - mkdir -p $HOME/.local/lib
+  - mkdir -p $HOME/.local/include
+  - cp -r usr/local/lib/bap/ $HOME/.local/bap/plugins
+  - cp -r usr/local/lib/libbap.so.* $HOME/.local/lib/libbap.so
+  - cp -r usr/local/include/bap.h $HOME/.local/include
   # Fetch travis-cargo
   - |
       pip install 'travis-cargo<0.2' --user &&
