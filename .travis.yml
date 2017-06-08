@@ -27,31 +27,22 @@ before_script:
 
 sudo: false
 addons:
-  postgresql: 9.3
+  postgresql: 9.5
   apt:
     sources:
-    - avsm
+    - ubuntu-toolchain-r-test
+    - llvm-toolchain-precise-3.9
     packages:
-    - camlp4
-    - camlp4-extra
-    - clang
+    - clang-3.9
+    - libclang-3.9-dev
     - curl
     - libcurl4-gnutls-dev
     - libgmp-dev
     - libssl-dev
     - libzip-dev
-    - llvm
-    - llvm-3.4-dev
+    - llvm-3.9-dev
     - m4
-    - ocaml
-    - ocaml-base
-    - ocaml-base-nox
-    - ocaml-compiler-libs
-    - ocaml-native-compilers
-    - ocaml-nox
     - time
-    - opam
-    - aspcud
 
 rust:
   - nightly
