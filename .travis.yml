@@ -71,6 +71,11 @@ after_success:
 env:
   global:
     - TRAVIS_CARGO_NIGHTLY_FEATURE=""
-    - LIBRARY_PATH=$HOME/.local/lib:$LIBRARY_PATH
-    - LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
+    - BAP_LIB_DIR=$HOME/.local/lib
+    - BAP_PLUGIN_PATH=$HOME/.local/bap/plugins
+    - BAP_INCLUDE_DIR=$HOME/.local/include
+    - LD_LIBRARY_PATH=$HOME/.local/lib
+    - C_INCLUDE_PATH=$HOME/.local/include
+    - LIBCLANG_PATH=/usr/lib/clang/3.9/lib/linux/
+    - LLVM_CONFIG_PATH=/usr/bin/llvm-config-3.9
     - secure: "PzsQk7Hc/OXhDNou9h/9e7d1AVeUF+z11GNXFZwuEIm10mxplvBHRNr8tSFbl39sooN3dg/kZZ39LOHr9JQnH8oKbYly/mLu2zySISG7j2i8P4F2gYfYHDpBhYyGL7FKoqdrMmOAZEaqf2sek4EFKeb4gTsvC2OJxmWpD18LLCVb1WRB0cjwppqSdo1TH6j1pXOVAl17X4Ci2bPZj5FT5dw+2NsEAbajDBr//Y+LCfQl2Ex3lvzTfPnyTxPgpe6vvLMn37bZqmj8G9DD3nFmBS4vMpZtZShywqXChSy2yMPCxHZXxArxezs+LQu0PbA/i3kxvNUjqzsmfRl6Dim3V3ou5c41tVawaj3QuRDcc1ksfNQpEwfiGxHoHrd8fTk/dWb0KnS5A5Hu0Z89T4Wm+wIAt2pNMBY+wqpDbBCVE5ZcOLLxZpOR64nGeUaqv8y5WH/nGz5Lt6M6J/fAodLdbbkayPyOcahoJf4vnr6j7Pw0+RROiSh26gT8n6DbRBwRCQIDQuN7+N6a/YhOFXx2BETHp404/gmpJL4ayeuCH+Pk0COf654Z/xOxDOE4zeof0G45mFb/qkfn+EiOSAyAwnzdmVK/Q03tg1fGZgfAFePQo1D58PXXJYxJ87XJDdU79+miOFaVJAkd7kqqTaNpYBx0FPCLB8Qb3wnv3oP7oVA="
