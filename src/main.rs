@@ -13,6 +13,7 @@ extern crate bit_vec;
 extern crate rustc_serialize;
 extern crate url;
 extern crate env_logger;
+extern crate time;
 use std::io::BufRead;
 use holmes::PgDB;
 use holmes::simple::*;
@@ -22,10 +23,12 @@ extern crate log;
 extern crate mktemp;
 
 use getopts::Options;
-use std::env;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 use holmes::pg::dyn::values::LargeBWrap;
 use std::io::Write;
+use std::env;
+use log::{LogRecord, LogLevelFilter};
+use env_logger::LogBuilder;
 
 mod analyses;
 mod schema;
@@ -40,8 +43,28 @@ fn url_encode(input: &[u8]) -> String {
     percent_encode(input, PATH_SEGMENT_ENCODE_SET).to_string()
 }
 
+fn init_logger() {
+    let format = |record: &LogRecord| {
+        let t = time::now();
+        format!("{},{:03} - {} - {}",
+                time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
+                t.tm_nsec / 1000_000,
+                record.level(),
+                record.args())
+    };
+
+    let rust_log = env::var("RUST_LOG").unwrap();
+
+    LogBuilder::new()
+        .format(format)
+        .filter(None, LogLevelFilter::Off)
+        .parse(&rust_log)
+        .init()
+        .unwrap();
+}
+
 fn main() {
-    env_logger::init().unwrap();
+    init_logger();
     let db_default_addr = match env::var("TIAMAT_PG_SOCK_DIR") {
         Ok(dir) => {
             format!("postgresql://holmes@{}/holmes",
@@ -68,7 +91,9 @@ fn main() {
         println!("{}", opts.usage(&brief));
         return;
     }
-    let db_addr = matches.opt_str("d").unwrap_or(db_default_addr.to_string());
+    let db_addr = matches
+        .opt_str("d")
+        .unwrap_or(db_default_addr.to_string());
     let in_paths = matches.opt_strs("i");
 
     let mut core = Core::new().unwrap();
