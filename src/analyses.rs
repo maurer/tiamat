@@ -325,22 +325,35 @@ pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
     })
 }
 
-pub fn get_arch_val(mut fd: &File) -> Arch {
+pub fn get_arch_val(mut fd: &File) -> Vec<Arch> {
     let mut b = Vec::new();
     fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
-                  let image = Image::from_data(&bap, &b).unwrap();
-                  image.arch().unwrap()
+                  let image = get_image!(bap, b);
+                  vec![image.arch().unwrap()]
               })
 }
 
 use std::process::Command;
 use num::{BigUint, FromPrimitive};
-// TODO - get rid of objdump; stop using filename and use contents
-pub fn get_pads(v: &String) -> Vec<(String, BitVector)> {
+// TODO - get rid of objdump
+pub fn get_pads(mut fd: &File) -> Vec<(String, BitVector)> {
+    use mktemp::Temp;
+    use std::path::Path;
+    use std::io::prelude::*;
+    let mut buf = Vec::new();
+    fd.read_to_end(&mut buf).unwrap();
+    let elf_temp = Temp::new_file().unwrap();
+    let elf_path_buf = elf_temp.to_path_buf();
+    let elf_path = elf_path_buf.to_str().unwrap();
+    {
+        let mut elf_file = File::create(elf_path).unwrap();
+        elf_file.write_all(&buf).unwrap();
+    }
     let out: String = String::from_utf8(Command::new("bash")
                                             .arg("-c")
-                                            .arg(format!("objdump -d {} | grep plt\\>:", v))
+                                            .arg(format!("objdump -d {} | grep plt\\>:",
+                                                         elf_path))
                                             .output()
                                             .expect("objdump grep pipeline failure")
                                             .stdout)
