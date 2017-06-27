@@ -40,20 +40,16 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(linkage(string, string));
         predicate!(link_pad(string, string, bitvector));
         // Filename, malloc_site, exit, var, freed
-        predicate!(path_alias([source_binary string], [malloc_site bitvector], [stack stack], [cur_binary string], [def_site bitvector], [def_var var], [freed bool]));
-
+        predicate!(stack_addr([binary string], [var var], [addr bitvector]));
+        predicate!(stack_free([binary string], [var var], [addr bitvector]));
         predicate!(free_call(string, bitvector));
         predicate!(malloc_call(string, bitvector));
         predicate!(using_call(string, bitvector));
-        // filename, source, errpoint, errvar
-        predicate!(use_after_free([source_binary string], [source bitvector "Allocation site for the use-after-free"], [stack stack "callstack at time of use"], [sink_binary string], [sink bitvector "Use site for the use after free"], [loc var "Where the pointer was when it was dereferenced"]) : "Possible use-after-free paths");
         predicate!(func([binary string], [entry bitvector], [addr bitvector]) : "addr is reachable from the function at entry without a return");
         predicate!(call_site([source_binary string], [source_addr bitvector], [dest_binary string], [dest_addr bitvector]));
         predicate!(path_step([source_binary string], [source_addr bitvector], [dest_binary string], [dest_addr bitvector]));
         predicate!(is_ret([binary string], [addr bitvector]) : "Instruction at this address is a conventional return");
         predicate!(is_call([binary string], [addr bitvector], bool));
-        predicate!(true_positive([binary string], [addr bitvector], [bad_parent string]));
-        predicate!(false_positive([binary string], [addr bitvector], [good_parent string]));
-        predicate!(deb_file([deb_name string], [contents largebytes]))
+        predicate!(stack_escape([binary string], [addr bitvector]))
     })
 }

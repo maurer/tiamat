@@ -150,6 +150,12 @@ fn fresh() -> u64 {
 pub fn seg_wrap(mut fd: &File) -> Vec<(u64, LargeBWrap, BitVector, BitVector, bool, bool, bool)> {
     let mut contents = Vec::new();
     fd.read_to_end(&mut contents).unwrap();
+    {
+        // Flush buffer out to file so I can make sure I'm getting the whole thing
+        use std::io::Write;
+        let mut out_dbg = File::create("/tmp/clone").unwrap();
+        out_dbg.write(&contents);
+    }
     Bap::with(|bap| {
         let image = get_image!(bap, contents);
         let out = {
@@ -325,6 +331,16 @@ pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
     })
 }
 
+pub fn root_wrap(mut fd: &File) -> Vec<BitVector> {
+    let mut b = Vec::new();
+    fd.read_to_end(&mut b).unwrap();
+    Bap::with(|bap| {
+                  let basic_roots = bap::basic::roots(b.as_slice());
+                  basic_roots.iter().map(BitVector::from_basic).collect()
+              })
+}
+
+
 pub fn get_arch_val(mut fd: &File) -> Vec<Arch> {
     let mut b = Vec::new();
     fd.read_to_end(&mut b).unwrap();
@@ -350,14 +366,15 @@ pub fn get_pads(mut fd: &File) -> Vec<(String, BitVector)> {
         let mut elf_file = File::create(elf_path).unwrap();
         elf_file.write_all(&buf).unwrap();
     }
-    let out: String = String::from_utf8(Command::new("bash")
-                                            .arg("-c")
-                                            .arg(format!("objdump -d {} | grep plt\\>:",
-                                                         elf_path))
-                                            .output()
-                                            .expect("objdump grep pipeline failure")
-                                            .stdout)
-            .unwrap();
+    let out: String =
+        String::from_utf8(Command::new("bash")
+                              .arg("-c")
+                              .arg(format!("arm-frc-gnueabi-objdump -d {} | grep plt\\>:",
+                                           elf_path))
+                              .output()
+                              .expect("objdump grep pipeline failure")
+                              .stdout)
+                .unwrap();
     out.split("\n")
         .filter(|x| *x != "")
         .map(|line| {
@@ -457,6 +474,63 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
     }
 }
 
+fn proc_stack((bad, dead): (Vec<HVar>, bool), stmt: &Statement) -> (Vec<HVar>, bool) {
+    if dead {
+        // Short circuit, we don't actually care about taint
+        return (bad, dead);
+    }
+    use bap::high::bil::Statement::*;
+    match *stmt {
+        // Register update
+        Move {
+            lhs: ref reg,
+            rhs: ref e,
+        } if is_reg(&reg) => {
+            if hv_match(&bad, &e) {
+                (add_hvar(bad,
+                          HVar {
+                              inner: reg.clone(),
+                              offset: None,
+                          }),
+                 dead)
+            } else {
+                (rem_hvar(bad,
+                          HVar {
+                              inner: reg.clone(),
+                              offset: None,
+                          }),
+                 dead)
+            }
+        }
+        // Memory Write
+        Move {
+            lhs: ref mem,
+            rhs: ref e,
+        } if is_mem(&mem) => {
+            match *e {
+                Expression::Store {
+                    memory: _,
+                    index: ref idx,
+                    value: ref val,
+                    endian: _,
+                    size: _,
+                } => {
+                    if hv_match(&bad, &val) {
+                        // Stack escape happens here if promoted idx isn't trackable
+                        promote_idx(idx).map_or((bad.clone(), true),
+                                                |hidx| (add_hvar(bad, hidx), dead))
+                    } else {
+                        promote_idx(idx).map_or((bad.clone(), dead),
+                                                |hidx| (rem_hvar(bad, hidx), dead))
+                    }
+                }
+                _ => (bad, dead),
+            }
+        }
+        _ => (bad, dead),
+    }
+}
+
 fn proc_stmt(bad: Vec<HVar>, stmt: &Statement) -> Vec<HVar> {
     use bap::high::bil::Statement::*;
     match *stmt {
@@ -512,6 +586,13 @@ pub fn xfer_taint((sema, var): (&Sema, &HVar)) -> Vec<HVar> {
         .into_iter()
         .filter(|v| v.not_temp())
         .collect()
+}
+
+pub fn stack_escape((var, sema): (&HVar, &Sema)) -> bool {
+    sema.stmts
+        .iter()
+        .fold((vec![var.clone()], false), proc_stack)
+        .1
 }
 
 pub fn deref_var((sema, var): (&Sema, &HVar)) -> bool {

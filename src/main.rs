@@ -105,11 +105,8 @@ fn main() {
         }
     }
     core.run(holmes.quiesce()).unwrap();
-    dump(&mut holmes, "disasm");
-    dump(&mut holmes, "succ");
-    dump(&mut holmes, "true_positive");
-    dump(&mut holmes, "false_positive");
-    dump(&mut holmes, "use_after_free");
+    dump(&mut holmes, "stack_free");
+    dump(&mut holmes, "stack_escape");
 }
 
 fn dump(holmes: &mut Engine, target: &str) {
@@ -133,7 +130,9 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
     try!(schema::setup(holmes));
 
     holmes_exec!(holmes, {
+        func!(let stack_escape : (var, sema) -> bool = analyses::stack_escape);
         func!(let get_arch_val : largebytes -> [uint64] = analyses::get_arch_val);
+        func!(let root_wrap: largebytes -> [bitvector] = analyses::root_wrap);
         func!(let seg_wrap : largebytes -> [(largebytes, uint64, bitvector, bitvector, bool, bool, bool)] = analyses::seg_wrap);
         func!(let find_succs : (sema, bitvector) -> [bitvector] = analyses::successors);
         func!(let find_succs_upper : (sema, bitvector) -> ubvs = analyses::succ_wrap_upper);
@@ -149,7 +148,6 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         func!(let is_ret : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_ret);
         func!(let is_call : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_call);
         func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
-        func!(let unpack_deb : largebytes -> [(string, largebytes)] = analyses::unpack_deb);
         rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
       });
@@ -163,6 +161,9 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         rule!(seglive(name, id, addr, start, end) <= live(name, addr) & segment(name, id, [_], seg_start, seg_end, [_], [_], [_]), {
         let [ {start, end} ] = {rebase([seg_start], [seg_end], [addr], (16))}
       });
+        rule!(entry(name, ("rooter_func"), addr, (bap::high::bitvector::BitVector::nil())) <= file(name, bin), {
+        let [ addr ] = {root_wrap([bin])}
+        });
         rule!(disasm(name, addr, dis) <= seglive(name, id, addr, start, end) & segment(name, id, bin, [_], [_], [_], [_], [_]) & arch(name, arch), {
          let [ dis ] = {disas([arch], [addr], [bin], [start])}
       });
@@ -190,55 +191,29 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         // Add stepover edge (this is kinda janky, since this is a place I'd like to circumscribe)
         rule!(succ(name, addr, next, (false)) <= succ(name, addr, tgt, (true)) & link_pad(name, [_], tgt) & sema(name, addr, [_], next));
 
+	// Operator delete
+        rule!(free_call(name, addr) <= link_pad(name, ("_ZdlPv"), tgt) & succ(name, addr, tgt, (true)));
         rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt, (true)));
         rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt, (true)));
         rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
-        rule!(path_alias(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
-        rule!(path_alias(src_name, src, stack, free_name, next, (var::get_arg0()), (true)) <= path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
-        // Upgrade set on free
-        // If two pointers come from the same allocation site, they may alias. Upgrade them to
-        // freed if anything was freed, just in case
-        rule!(path_alias(name, src, stack, cur_name, cur, var, (true)) <= path_alias(name, src, stack, cur_name, cur, var, (false)) & path_alias(name, src, stack, cur_name, cur, [_], (true)));
-        // If there's a successor, follow that and transfer taint (but not if it's a call)
-        rule!(path_alias(name, src, stack, cur_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
-          let [ var2 ] = {xfer_taint([sema], [var])}
-      });
-        // If it's a call, a call_site instance will be generated, resolving dynamic calls if
-        // needed. Add this onto the stack so any returns actually go here rather than anywhere
-        rule!(path_alias(name, src, stack2, next_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
-        let stack2 = {push_stack([stack], [cur_name], [fall])};
-        let [ var2 ] = {xfer_taint([sema], [var])}
+        // Stack itself is always a stack addr
+        rule!(stack_addr(name, (var::get_stack()), addr) <= live(name, addr));
+        rule!(stack_addr(name, def_var, addr) <= stack_addr(name, stack_var, prev_addr) & sema(name, addr, sema, [_]) & succ(name, prev_addr, addr, (false)), {
+            let [ def_var ] = {xfer_taint([sema], [stack_var])}
         });
-
-        // If it's a return and an empty stack, return anywhere we were called
-        rule!(path_alias(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr));
-        // If it's a return and we have a stack, pop it
-        rule!(path_alias(src_name, src_addr, stack2, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, stack, ret_name, ret_addr, var, t) & is_ret(ret_name, ret_addr), {
-            let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) }
+        rule!(stack_escape(name, addr) <= stack_addr(name, stack_var, prev_addr) & sema(name, addr, sema, [_]) & succ(name, prev_addr, addr, (false)), {
+            let (true) = {stack_escape([stack_var], [sema])}
         });
-        rule!(use_after_free(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & sema(other, loc, sema, [_]), {
-          let (true) = {deref_var([sema], [var])}
-        });
-        // puts uses the variable, but we're not anlyzing libc for now
-        rule!(use_after_free(name, src, stack, other, loc, (var::get_arg0())) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), (true)) & using_call(other, loc));
-
+        rule!(stack_addr(tgt_name, var, tgt_addr) <= stack_addr(call_name, var, call_addr) & call_site(call_name, call_addr, tgt_name, tgt_addr));
+        rule!(stack_addr(call_name, var, tgt_addr) <= stack_addr(ret_name, var, ret_addr) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], tgt_addr));
+        rule!(stack_free(name, (var::get_arg0()), addr) <= stack_addr(name, (var::get_arg0()), addr) & free_call(name, addr));
         rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
         rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ(bin_name, addr, addr2, (false)));
         rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
-        rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr, [_]));
-        // TODO there's a bit of overrestriction on name here
-        rule!(true_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
-            let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_bad"))}
-        });
-        rule!(false_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
-            let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_good"))}
-        });
-        rule!(file(path, bin) <= deb_file([_], deb_bin), {
-            let [ {path, bin} ] = {unpack_deb([deb_bin])}
-        })
+        rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr, [_]))
     })?;
     for (in_path, in_bin) in ins {
-        fact!(holmes, deb_file(in_path, in_bin))?
+        fact!(holmes, file(in_path, in_bin))?
     }
     Ok(())
 }
