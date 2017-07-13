@@ -107,6 +107,8 @@ fn main() {
     core.run(holmes.quiesce()).unwrap();
     dump(&mut holmes, "stack_free");
     dump(&mut holmes, "stack_escape");
+    dump(&mut holmes, "double_free");
+    dump(&mut holmes, "use_after_free");
 }
 
 fn dump(holmes: &mut Engine, target: &str) {
@@ -191,11 +193,15 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         // Add stepover edge (this is kinda janky, since this is a place I'd like to circumscribe)
         rule!(succ(name, addr, next, (false)) <= succ(name, addr, tgt, (true)) & link_pad(name, [_], tgt) & sema(name, addr, [_], next));
 
-	// Operator delete
+        // Operator delete
         rule!(free_call(name, addr) <= link_pad(name, ("_ZdlPv"), tgt) & succ(name, addr, tgt, (true)));
         rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt, (true)));
         rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(malloc_call(name, addr) <= link_pad(name, ("calloc"), tgt) & succ(name, addr, tgt, (true)));
         rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
+
+
+        // Stack monitoring section
         // Stack itself is always a stack addr
         rule!(stack_addr(name, (var::get_stack()), addr) <= live(name, addr));
         rule!(stack_addr(name, def_var, addr) <= stack_addr(name, stack_var, prev_addr) & sema(name, addr, sema, [_]) & succ(name, prev_addr, addr, (false)), {
@@ -207,6 +213,44 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         rule!(stack_addr(tgt_name, var, tgt_addr) <= stack_addr(call_name, var, call_addr) & call_site(call_name, call_addr, tgt_name, tgt_addr));
         rule!(stack_addr(call_name, var, tgt_addr) <= stack_addr(ret_name, var, ret_addr) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], tgt_addr));
         rule!(stack_free(name, (var::get_arg0()), addr) <= stack_addr(name, (var::get_arg0()), addr) & free_call(name, addr));
+
+        // Heap monitoring section
+        // When malloc is called, start tracking the output
+        rule!(path_alias(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (""), (bap::high::bitvector::BitVector::nil()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
+        // When free is called, update it to free status
+        // We're not trying to track triple frees, so if it's already freed, we don't bother
+        rule!(path_alias(src_name, src, stack, free_name, next, (var::get_arg0()), free_name, free_addr, (true)) <= path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_], [_], (false)) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
+        // If one thing in an alias set is free, all things in that alias set are
+        rule!(path_alias(name, src, stack, cur_name, cur, var, free_name, free_addr, (true)) <= path_alias(name, src, stack, cur_name, cur, var, [_], [_], (false)) & path_alias(name, src, stack, cur_name, cur, [_], free_name, free_addr, (true)));
+        // Propagate taint normally along non-call steps
+        rule!(path_alias(name, src, stack, cur_name, fut, var2, free_name, free_addr, t) <= path_alias(name, src, stack, cur_name, cur, var, free_name, free_addr, t) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
+          let [ var2 ] = {xfer_taint([sema], [var])}
+      });
+        // Propagate taint while updating stack along call steps
+        rule!(path_alias(name, src, stack2, next_name, fut, var2, free_name, free_addr, t) <= path_alias(name, src, stack, cur_name, cur, var, free_name, free_addr, t) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
+        let stack2 = {push_stack([stack], [cur_name], [fall])};
+        let [ var2 ] = {xfer_taint([sema], [var])}
+        });
+
+        // If it's a return and an empty stack, return anywhere we were called
+        rule!(path_alias(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, free_name, free_addr, t) <= path_alias(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, free_name, free_addr, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr));
+
+        // If it's a return and we have a stack, pop it
+        rule!(path_alias(src_name, src_addr, stack2, dst_name, dst_addr, var, free_name, free_addr, t) <= path_alias(src_name, src_addr, stack, ret_name, ret_addr, var, free_name, free_addr, t) & is_ret(ret_name, ret_addr), {
+            let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) }
+        });
+
+        // If an instruction uses a freed pointer, we found a UaF
+        rule!(use_after_free(name, src, stack, other, loc, var, free_name, free_addr) <= path_alias(name, src, stack, other, loc, var, free_name, free_addr, (true)) & sema(other, loc, sema, [_]), {
+          let (true) = {deref_var([sema], [var])}
+        });
+
+        // If a freed pointer is passed into a function which uses it, we found a UaF
+        rule!(use_after_free(name, src, stack, other, loc, (var::get_arg0()), free_name, free_addr) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), free_name, free_addr, (true)) & using_call(other, loc));
+
+        // If a freed pointer is freed, we found a double free
+        rule!(double_free(name, src, stack, other, loc, (var::get_arg0()), free_name, free_addr) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), free_name, free_addr, (true)) & free_call(other, loc));
+
         rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
         rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ(bin_name, addr, addr2, (false)));
         rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));

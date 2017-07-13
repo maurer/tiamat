@@ -50,6 +50,9 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(path_step([source_binary string], [source_addr bitvector], [dest_binary string], [dest_addr bitvector]));
         predicate!(is_ret([binary string], [addr bitvector]) : "Instruction at this address is a conventional return");
         predicate!(is_call([binary string], [addr bitvector], bool));
+        predicate!(use_after_free([source_binary string], [source bitvector "Allocation site for the use-after-free"], [stack stack "callstack at time of use"], [sink_binary string], [sink bitvector "Use site for the use after free"], [loc var "Where the pointer was when it was dereferenced"], [free_binary string], [free_site bitvector "Free site"]) : "Possible use-after-free paths");
+        predicate!(path_alias([source_binary string], [malloc_site bitvector], [stack stack], [cur_binary string], [def_site bitvector], [def_var var], [free_name string], [free_addr bitvector], [freed bool]));
+        predicate!(double_free([source_binary string], [source bitvector "Allocation site for the double-free"], [stack stack "callstack at time of second free"], [sink_binary string], [sink bitvector "Second free site"], [loc var "Where the pointer was when it was freed the second time"], [free_binary string], [free_site bitvector "First free site"]) : "double-free paths");
         predicate!(stack_escape([binary string], [addr bitvector]))
     })
 }

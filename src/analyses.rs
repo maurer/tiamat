@@ -366,15 +366,14 @@ pub fn get_pads(mut fd: &File) -> Vec<(String, BitVector)> {
         let mut elf_file = File::create(elf_path).unwrap();
         elf_file.write_all(&buf).unwrap();
     }
-    let out: String =
-        String::from_utf8(Command::new("bash")
-                              .arg("-c")
-                              .arg(format!("arm-frc-gnueabi-objdump -d {} | grep plt\\>:",
+    let out: String = String::from_utf8(Command::new("bash")
+                                            .arg("-c")
+                                            .arg(format!("objdump -d {} | grep plt\\>:",
                                            elf_path))
-                              .output()
-                              .expect("objdump grep pipeline failure")
-                              .stdout)
-                .unwrap();
+                                            .output()
+                                            .expect("objdump grep pipeline failure")
+                                            .stdout)
+            .unwrap();
     out.split("\n")
         .filter(|x| *x != "")
         .map(|line| {

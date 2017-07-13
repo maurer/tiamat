@@ -36,8 +36,8 @@ impl ToJson for HVar {
 pub fn get_arg0() -> HVar {
     HVar {
         inner: Variable {
-            name: "R0".to_string(),
-            type_: bap::high::bil::Type::Immediate(32),
+            name: "RDI".to_string(),
+            type_: bap::high::bil::Type::Immediate(64),
             tmp: false,
             index: 0,
         },
@@ -48,8 +48,8 @@ pub fn get_arg0() -> HVar {
 pub fn get_ret() -> HVar {
     HVar {
         inner: Variable {
-            name: "R0".to_string(),
-            type_: bap::high::bil::Type::Immediate(32),
+            name: "RAX".to_string(),
+            type_: bap::high::bil::Type::Immediate(64),
             tmp: false,
             index: 0,
         },
@@ -60,8 +60,8 @@ pub fn get_ret() -> HVar {
 pub fn get_stack() -> HVar {
     HVar {
         inner: Variable {
-            name: "SP".to_string(),
-            type_: bap::high::bil::Type::Immediate(32),
+            name: "RSP".to_string(),
+            type_: bap::high::bil::Type::Immediate(64),
             tmp: false,
             index: 0,
         },
