@@ -8,19 +8,19 @@ description = "Binary analysis using Holmes"
 repository = "https://github.com/maurer/tiamat"
 
 [dependencies]
-num = "*"
-url = "*"
-getopts = "*"
-postgres_array = "*"
+num = "0.1"
+url = "1.5"
+getopts = "0.2"
+postgres_array = "0.9"
 bit-vec = "0.4"
 rustc-serialize = "0.3"
 log = "0.3"
 env_logger = "0.3"
-mktemp = "*"
-time = "*"
+mktemp = "0.3"
+time = "0.1"
 
 [dependencies.postgres]
-version = "0.13"
+version = "0.15"
 features = ["with-bit-vec", "with-rustc-serialize"]
 
 [dependencies.holmes]

@@ -45,13 +45,17 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
         .output()
         .expect("failed to unpack");
     let find_out = Command::new("find")
-        .args(&[unpack_path,
+        .args(
+            &[
+                unpack_path,
                 "-exec",
                 "bash",
                 "-c",
                 "file {} | grep -c ELF &>/dev/null",
                 ";",
-                "-print"])
+                "-print",
+            ],
+        )
         .output()
         .expect("failed to search unpack directory");
     let lines = find_out.stdout.lines();
@@ -59,11 +63,7 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
         .map(|line| {
             let raw_path = line.unwrap();
             let path = Path::new(&raw_path);
-            let file_name = path.file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
+            let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
             let mut elf_file = File::open(path).unwrap();
             let mut out = Vec::new();
             elf_file.read_to_end(&mut out).unwrap();
@@ -72,14 +72,15 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
         .collect()
 }
 
-pub fn find_parent((sym_bin, sym_name, sym_start, sym_end, src, stack, suff): (&String,
-                                                                               &String,
-                                                                               &BitVector,
-                                                                               &BitVector,
-                                                                               &BitVector,
-                                                                               &Stack,
-                                                                               &String))
-                   -> Vec<String> {
+pub fn find_parent(
+    (sym_bin, sym_name, sym_start, sym_end, src, stack, suff): (&String,
+                                                                &String,
+                                                                &BitVector,
+                                                                &BitVector,
+                                                                &BitVector,
+                                                                &Stack,
+                                                                &String),
+) -> Vec<String> {
     if !sym_name.ends_with(suff) {
         // This isn't one o fthe symbols we're supposed to find stuff in
         return vec![];
@@ -88,18 +89,24 @@ pub fn find_parent((sym_bin, sym_name, sym_start, sym_end, src, stack, suff): (&
         .0
         .iter()
         .zip(stack.0.iter())
-        .filter_map(|(addr, name)| if name == sym_bin { Some(addr) } else { None })
+        .filter_map(|(addr, name)| if name == sym_bin {
+            Some(addr)
+        } else {
+            None
+        })
         .collect();
     addrs.push(src);
     for addr in addrs {
         if (addr < sym_end) && (addr >= sym_start) {
-            trace!("Bad address found: {} <= {} <= {} -> {}\tsrc={}\tstack={}",
-                   sym_start,
-                   addr,
-                   sym_end,
-                   sym_name,
-                   src,
-                   stack);
+            trace!(
+                "Bad address found: {} <= {} <= {} -> {}\tsrc={}\tstack={}",
+                sym_start,
+                addr,
+                sym_end,
+                sym_name,
+                src,
+                stack
+            );
             return vec![sym_name.clone()];
         }
     }
@@ -123,8 +130,9 @@ pub fn push_stack((stack, name, tgt): (&Stack, &String, &BitVector)) -> Stack {
     Stack(ns, BVList(ads))
 }
 
-pub fn rebase((base, end, addr, len): (&BitVector, &BitVector, &BitVector, &u64))
-              -> Vec<(u64, u64)> {
+pub fn rebase(
+    (base, end, addr, len): (&BitVector, &BitVector, &BitVector, &u64),
+) -> Vec<(u64, u64)> {
     let addr = addr.to_u64().unwrap();
     let end = end.to_u64().unwrap();
     let base = base.to_u64().unwrap();
@@ -157,13 +165,15 @@ pub fn seg_wrap(mut fd: &File) -> Vec<(u64, LargeBWrap, BitVector, BitVector, bo
             segs.iter()
                 .map(|seg| {
                     let mem = seg.memory();
-                    (fresh(),
-                     LargeBWrap { inner: mem.data() },
-                     BitVector::from_basic(&mem.min_addr()),
-                     BitVector::from_basic(&mem.max_addr()),
-                     seg.is_readable(),
-                     seg.is_writable(),
-                     seg.is_executable())
+                    (
+                        fresh(),
+                        LargeBWrap { inner: mem.data() },
+                        BitVector::from_basic(&mem.min_addr()),
+                        BitVector::from_basic(&mem.max_addr()),
+                        seg.is_readable(),
+                        seg.is_writable(),
+                        seg.is_executable(),
+                    )
                 })
                 .collect()
         };
@@ -192,10 +202,10 @@ pub fn stmt_succ(stmts: &[Statement]) -> (Vec<BitVector>, bool) {
             }
         }
         &IfThenElse {
-             cond: _,
-             ref then_clause,
-             ref else_clause,
-         } => {
+            cond: _,
+            ref then_clause,
+            ref else_clause,
+        } => {
             let (mut then_tgts, then_fall) = stmt_succ(&then_clause);
             let (mut else_tgts, else_fall) = stmt_succ(&else_clause);
             let fall = then_fall || else_fall;
@@ -222,8 +232,9 @@ pub fn successors((sema, fall_addr): (&Sema, &BitVector)) -> Vec<BitVector> {
     targets
 }
 
-pub fn lift_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64))
-                 -> Vec<(Sema, BitVector)> {
+pub fn lift_wrap(
+    (arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64),
+) -> Vec<(Sema, BitVector)> {
     let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
     fd.read_exact(&mut bin).unwrap();
@@ -234,9 +245,7 @@ pub fn lift_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64))
         let fall = addr + len;
         let insn = code.insn();
         let sema = insn.semantics();
-        let stmts: Vec<_> = sema.iter()
-            .map(|bb| Statement::from_basic(&bb))
-            .collect();
+        let stmts: Vec<_> = sema.iter().map(|bb| Statement::from_basic(&bb)).collect();
         Ok((Sema { stmts: stmts }, fall))
     }))
 }
@@ -247,13 +256,13 @@ pub fn is_ret((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> 
     fd.read_exact(&mut bin).unwrap();
 
     to_vec(Bap::with(|bap| {
-                         let disas = BasicDisasm::new(&bap, *arch)?;
-                         {
-                             let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
-                             let insn = code.insn();
-                             Ok(insn.is_return())
-                         }
-                     }))
+        let disas = BasicDisasm::new(&bap, *arch)?;
+        {
+            let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+            let insn = code.insn();
+            Ok(insn.is_return())
+        }
+    }))
 }
 
 fn to_vec<T>(r: bap::basic::Result<T>) -> Vec<T> {
@@ -269,13 +278,13 @@ pub fn is_call((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) ->
     fd.read_exact(&mut bin).unwrap();
 
     to_vec(Bap::with(|bap| {
-                         let disas = BasicDisasm::new(&bap, *arch)?;
-                         {
-                             let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
-                             let insn = code.insn();
-                             Ok(insn.is_call())
-                         }
-                     }))
+        let disas = BasicDisasm::new(&bap, *arch)?;
+        {
+            let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+            let insn = code.insn();
+            Ok(insn.is_call())
+        }
+    }))
 }
 
 // TODO: holmes doesn't allow multiple heads yet, so we lift twice to get the disasm
@@ -286,13 +295,13 @@ pub fn disas_wrap((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64))
     fd.read_exact(&mut bin).unwrap();
 
     to_vec(Bap::with(|bap| {
-                         let disas = BasicDisasm::new(&bap, *arch)?;
-                         let out = {
-                             let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
-                             code.insn().to_string()
-                         };
-                         Ok(out)
-                     }))
+        let disas = BasicDisasm::new(&bap, *arch)?;
+        let out = {
+            let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+            code.insn().to_string()
+        };
+        Ok(out)
+    }))
 }
 
 pub fn succ_wrap_upper((sema, fall_addr): (&Sema, &BitVector)) -> UpperBVSet {
@@ -314,10 +323,12 @@ pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
             let syms = image.symbols();
             let out = syms.iter()
                 .map(|x| {
-                         (x.name(),
-                          BitVector::from_basic(&x.memory().min_addr()),
-                          BitVector::from_basic(&x.memory().max_addr()))
-                     })
+                    (
+                        x.name(),
+                        BitVector::from_basic(&x.memory().min_addr()),
+                        BitVector::from_basic(&x.memory().max_addr()),
+                    )
+                })
                 .collect();
             out
         };
@@ -329,9 +340,9 @@ pub fn get_arch_val(mut fd: &File) -> Vec<Arch> {
     let mut b = Vec::new();
     fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
-                  let image = get_image!(bap, b);
-                  vec![image.arch().unwrap()]
-              })
+        let image = get_image!(bap, b);
+        vec![image.arch().unwrap()]
+    })
 }
 
 use std::process::Command;
@@ -350,24 +361,24 @@ pub fn get_pads(mut fd: &File) -> Vec<(String, BitVector)> {
         let mut elf_file = File::create(elf_path).unwrap();
         elf_file.write_all(&buf).unwrap();
     }
-    let out: String = String::from_utf8(Command::new("bash")
-                                            .arg("-c")
-                                            .arg(format!("objdump -d {} | grep plt\\>:",
-                                                         elf_path))
-                                            .output()
-                                            .expect("objdump grep pipeline failure")
-                                            .stdout)
-            .unwrap();
+    let out: String = String::from_utf8(
+        Command::new("bash")
+            .arg("-c")
+            .arg(format!("objdump -d {} | grep plt\\>:", elf_path))
+            .output()
+            .expect("objdump grep pipeline failure")
+            .stdout,
+    ).unwrap();
     out.split("\n")
         .filter(|x| *x != "")
         .map(|line| {
-                 let mut it = line.split(" ");
-                 let addr64 = u64::from_str_radix(it.next().unwrap(), 16).unwrap();
-                 let addr = BitVector::new_unsigned(BigUint::from_u64(addr64).unwrap(), 64);
-                 let unparsed = it.next().expect(&format!("No name? {}", line));
-                 let name = unparsed[1..].split("@").next().unwrap();
-                 (name.to_string(), addr)
-             })
+            let mut it = line.split(" ");
+            let addr64 = u64::from_str_radix(it.next().unwrap(), 16).unwrap();
+            let addr = BitVector::new_unsigned(BigUint::from_u64(addr64).unwrap(), 64);
+            let unparsed = it.next().expect(&format!("No name? {}", line));
+            let name = unparsed[1..].split("@").next().unwrap();
+            (name.to_string(), addr)
+        })
         .collect()
 }
 
@@ -375,9 +386,9 @@ fn hv_match(bad: &Vec<HVar>, e: &Expression) -> bool {
     match *e {
         Expression::Var(ref v) => {
             bad.contains(&HVar {
-                              inner: v.clone(),
-                              offset: None,
-                          })
+                inner: v.clone(),
+                offset: None,
+            })
         }
         Expression::Load { index: ref idx, .. } => {
             match promote_idx(idx) {
@@ -418,9 +429,9 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
     match *idx {
         Expression::Var(ref v) => {
             Some(HVar {
-                     inner: v.clone(),
-                     offset: Some(BitVector::new_unsigned(BigUint::from_u32(0).unwrap(), 64)),
-                 })
+                inner: v.clone(),
+                offset: Some(BitVector::new_unsigned(BigUint::from_u32(0).unwrap(), 64)),
+            })
         }
         Expression::BinOp {
             op: BinOp::Add,
@@ -432,9 +443,9 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
                     match **rhs {
                         Expression::Const(ref bv) => {
                             Some(HVar {
-                                     inner: v.clone(),
-                                     offset: Some(bv.clone()),
-                                 })
+                                inner: v.clone(),
+                                offset: Some(bv.clone()),
+                            })
                         }
                         _ => None,
                     }
@@ -443,9 +454,9 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
                     match **rhs {
                         Expression::Var(ref v) => {
                             Some(HVar {
-                                     inner: v.clone(),
-                                     offset: Some(bv.clone()),
-                                 })
+                                inner: v.clone(),
+                                offset: Some(bv.clone()),
+                            })
                         }
                         _ => None,
                     }
@@ -466,17 +477,21 @@ fn proc_stmt(bad: Vec<HVar>, stmt: &Statement) -> Vec<HVar> {
             rhs: ref e,
         } if is_reg(&reg) => {
             if hv_match(&bad, &e) {
-                add_hvar(bad,
-                         HVar {
-                             inner: reg.clone(),
-                             offset: None,
-                         })
+                add_hvar(
+                    bad,
+                    HVar {
+                        inner: reg.clone(),
+                        offset: None,
+                    },
+                )
             } else {
-                rem_hvar(bad,
-                         HVar {
-                             inner: reg.clone(),
-                             offset: None,
-                         })
+                rem_hvar(
+                    bad,
+                    HVar {
+                        inner: reg.clone(),
+                        offset: None,
+                    },
+                )
             }
         }
         // Memory Write

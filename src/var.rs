@@ -5,7 +5,7 @@ use bap::high::bil::Variable;
 use holmes::pg::dyn::values::{ValueT, ToValue};
 use holmes::pg::dyn::types::TypeT;
 use postgres::Result;
-use postgres::types::{ToSql, IsNull, SessionInfo};
+use postgres::types::{ToSql, IsNull};
 use holmes::pg::RowIter;
 use holmes::pg::dyn::{Type, Value};
 use std::any::Any;
@@ -14,7 +14,7 @@ use std::io::prelude::Write;
 use rustc_serialize::json::{Json, Decoder, ToJson, encode};
 use rustc_serialize::Decodable;
 
-#[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq, RustcDecodable, RustcEncodable)]
 pub struct HVar {
     pub inner: Variable,
     pub offset: Option<BitVector>,
@@ -57,7 +57,7 @@ pub fn get_ret() -> HVar {
     }
 }
 
-#[derive(Debug,Clone,Hash,PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct VarType;
 impl TypeT for VarType {
     fn name(&self) -> Option<&'static str> {
@@ -88,15 +88,14 @@ impl ValueT for HVar {
 }
 
 impl ToSql for HVar {
-    accepts!(::postgres::types::Type::Jsonb,
-             ::postgres::types::Type::Json);
+    accepts!(::postgres::types::JSONB, ::postgres::types::JSON);
     to_sql_checked!();
-    fn to_sql(&self,
-              ty: &::postgres::types::Type,
-              out: &mut Vec<u8>,
-              ctx: &SessionInfo)
-              -> ::std::result::Result<IsNull, Box<::std::error::Error + Send + Sync>> {
-        self.to_json().to_sql(ty, out, ctx)
+    fn to_sql(
+        &self,
+        ty: &::postgres::types::Type,
+        out: &mut Vec<u8>,
+    ) -> ::std::result::Result<IsNull, Box<::std::error::Error + Send + Sync>> {
+        self.to_json().to_sql(ty, out)
     }
 }
 

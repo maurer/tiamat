@@ -2,7 +2,7 @@ use bap::high::bitvector::BitVector;
 use holmes::pg::dyn::values::{ValueT, ToValue};
 use holmes::pg::dyn::types::TypeT;
 use postgres::Result;
-use postgres::types::{ToSql, IsNull, SessionInfo};
+use postgres::types::{ToSql, IsNull};
 use postgres_array::Array;
 use holmes::pg::RowIter;
 use holmes::pg::dyn::{Type, Value};
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::io::prelude::Write;
 use bvlist::BVList;
 
-#[derive(Debug,Clone,Hash,PartialOrd,PartialEq)]
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq)]
 pub struct Stack(pub Vec<String>, pub BVList);
 
 impl ::std::fmt::Display for Stack {
@@ -23,7 +23,7 @@ impl ::std::fmt::Display for Stack {
     }
 }
 
-#[derive(Debug,Clone,Hash,PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct StackType;
 impl TypeT for StackType {
     fn name(&self) -> Option<&'static str> {
@@ -32,11 +32,16 @@ impl TypeT for StackType {
     fn extract(&self, rows: &mut RowIter) -> Option<Value> {
         let names: Array<String> = rows.next().unwrap();
         let addrs: Array<BitVec> = rows.next().unwrap();
-        Some(Arc::new(Stack(names.iter().cloned().collect(),
-                            BVList(addrs.iter().map(|bv| BitVector::new(bv)).collect()))))
+        Some(Arc::new(Stack(
+            names.iter().cloned().collect(),
+            BVList(addrs.iter().map(|bv| BitVector::new(bv)).collect()),
+        )))
     }
     fn repr(&self) -> Vec<String> {
-        vec!["varchar[] not null".to_string(), "bit varying[] not null".to_string()]
+        vec![
+            "varchar[] not null".to_string(),
+            "bit varying[] not null".to_string(),
+        ]
     }
     typet_boiler!();
 }

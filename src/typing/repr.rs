@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use holmes::pg::dyn::values::{ValueT, ToValue};
 use holmes::pg::dyn::types::TypeT;
 use postgres::Result;
-use postgres::types::{ToSql, IsNull, SessionInfo};
+use postgres::types::{ToSql, IsNull};
 use holmes::pg::RowIter;
 use holmes::pg::dyn::{Type, Value};
 use std::any::Any;
@@ -12,7 +12,7 @@ use std::io::prelude::Write;
 use rustc_serialize::json::{Json, Decoder, ToJson, encode};
 use rustc_serialize::Decodable;
 
-#[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq, RustcDecodable, RustcEncodable)]
 pub enum ValType {
     Var(u64),
     UInt { width: u32 },
@@ -22,14 +22,14 @@ pub enum ValType {
     Code(Box<BlockType>),
 }
 
-#[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq, RustcDecodable, RustcEncodable)]
 pub enum Assumes {
     Var(u64),
     Many(Vec<Assumes>),
     AddrType(BitVector, BlockType),
 }
 
-#[derive(Debug,Clone,Hash,PartialOrd,PartialEq,RustcDecodable,RustcEncodable)]
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq, RustcDecodable, RustcEncodable)]
 pub struct BlockType {
     register_file: Vec<ValType>,
     stack: Vec<ValType>,
@@ -43,7 +43,7 @@ impl ToJson for BlockType {
     }
 }
 
-#[derive(Debug,Clone,Hash,PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct BlockTypeType;
 impl TypeT for BlockTypeType {
     fn name(&self) -> Option<&'static str> {
@@ -77,15 +77,14 @@ impl ValueT for BlockType {
 }
 
 impl ToSql for BlockType {
-    accepts!(::postgres::types::Type::Jsonb,
-             ::postgres::types::Type::Json);
+    accepts!(::postgres::types::JSONB, ::postgres::types::JSON);
     to_sql_checked!();
-    fn to_sql(&self,
-              ty: &::postgres::types::Type,
-              out: &mut Vec<u8>,
-              ctx: &SessionInfo)
-              -> ::std::result::Result<IsNull, Box<::std::error::Error + Send + Sync>> {
-        self.to_json().to_sql(ty, out, ctx)
+    fn to_sql(
+        &self,
+        ty: &::postgres::types::Type,
+        out: &mut Vec<u8>,
+    ) -> ::std::result::Result<IsNull, Box<::std::error::Error + Send + Sync>> {
+        self.to_json().to_sql(ty, out)
     }
 }
 
