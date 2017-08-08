@@ -1,4 +1,4 @@
-use bap::basic::{Image, Segment, Arch, Endian, Symbol, Bap, BasicDisasm};
+use bap::basic::{Image, Arch, Bap, BasicDisasm};
 use bap::high::bil::{Statement, Expression, Variable, Type, BinOp};
 use bap::high::bitvector::BitVector;
 use bap;
@@ -27,7 +27,6 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
     use std::io::prelude::*;
     use mktemp::Temp;
     use std::path::Path;
-    use std::ffi::OsStr;
     let mut buf = Vec::new();
     fd.read_to_end(&mut buf).unwrap();
     let deb_temp = Temp::new_file().unwrap();
@@ -37,7 +36,7 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
         let mut deb_file = File::create(deb_path).unwrap();
         deb_file.write_all(&buf).unwrap();
     }
-    let mut unpack_temp_dir = Temp::new_dir().unwrap();
+    let unpack_temp_dir = Temp::new_dir().unwrap();
     let unpack_path_buf = unpack_temp_dir.to_path_buf();
     let unpack_path = unpack_path_buf.to_str().unwrap();
     Command::new("dpkg")
@@ -146,12 +145,12 @@ pub fn rebase(
     }
 }
 
-static mut ids: u64 = 0;
+static mut IDS: u64 = 0;
 
 fn fresh() -> u64 {
     unsafe {
-        ids = ids + 1;
-        ids
+        IDS = IDS + 1;
+        IDS
     }
 }
 
@@ -350,7 +349,6 @@ use num::{BigUint, FromPrimitive};
 // TODO - get rid of objdump
 pub fn get_pads(mut fd: &File) -> Vec<(String, BitVector)> {
     use mktemp::Temp;
-    use std::path::Path;
     use std::io::prelude::*;
     let mut buf = Vec::new();
     fd.read_to_end(&mut buf).unwrap();
@@ -435,8 +433,8 @@ fn promote_idx(idx: &Expression) -> Option<HVar> {
         }
         Expression::BinOp {
             op: BinOp::Add,
-            lhs: ref lhs,
-            rhs: ref rhs,
+            ref lhs,
+            ref rhs,
         } => {
             match **lhs {
                 Expression::Var(ref v) => {

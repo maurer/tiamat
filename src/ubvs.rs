@@ -1,7 +1,6 @@
 use bap::high::bitvector::BitVector;
 use holmes::pg::dyn::values::{ValueT, ToValue};
 use holmes::pg::dyn::types::TypeT;
-use postgres::Result;
 use postgres::types::{ToSql, IsNull};
 use postgres_array::Array;
 use holmes::pg::RowIter;
@@ -9,7 +8,6 @@ use holmes::pg::dyn::{Type, Value};
 use bit_vec::BitVec;
 use std::any::Any;
 use std::sync::Arc;
-use std::io::prelude::Write;
 
 #[derive(Debug, Clone, Hash, PartialOrd, PartialEq)]
 pub enum UpperBVSet {

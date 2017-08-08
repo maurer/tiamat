@@ -1,16 +1,13 @@
 use bap;
-use bit_vec::BitVec;
 use bap::high::bitvector::BitVector;
 use bap::high::bil::Variable;
 use holmes::pg::dyn::values::{ValueT, ToValue};
 use holmes::pg::dyn::types::TypeT;
-use postgres::Result;
 use postgres::types::{ToSql, IsNull};
 use holmes::pg::RowIter;
 use holmes::pg::dyn::{Type, Value};
 use std::any::Any;
 use std::sync::Arc;
-use std::io::prelude::Write;
 use rustc_serialize::json::{Json, Decoder, ToJson, encode};
 use rustc_serialize::Decodable;
 
