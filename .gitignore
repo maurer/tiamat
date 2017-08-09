@@ -1,2 +1,7 @@
 notes
 target
+
+samples/Juliet/testcases/*/*.o
+samples/Juliet/testcases/CWE416_Use_After_Free/CWE416
+
+.tmp*
