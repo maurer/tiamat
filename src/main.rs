@@ -244,7 +244,7 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         })
     })?;
     for (in_path, in_bin) in ins {
-        fact!(holmes, deb_file(in_path, in_bin))?
+        fact!(holmes, file(in_path, in_bin))?
     }
     Ok(())
 }
