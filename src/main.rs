@@ -111,6 +111,10 @@ fn main() {
         }
     }
     core.run(holmes.quiesce()).unwrap();
+    // Temp perf trick - delaying execution of long query time rules will make them have fewer
+    // queries
+    holmes_stage2(&mut holmes).unwrap();
+    core.run(holmes.quiesce()).unwrap();
     dump(&mut holmes, "disasm");
     dump(&mut holmes, "succ");
     dump(&mut holmes, "true_positive");
@@ -123,6 +127,16 @@ fn dump(holmes: &mut Engine, target: &str) {
     let mut out_fd = std::fs::File::create(format!("{}.html", target)).unwrap();
     out_fd.write_all(data.as_bytes()).unwrap();
 }
+
+fn holmes_stage2(holmes: &mut Engine) -> Result<()> {
+
+    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
+    holmes_exec!(holmes, {
+        // If it's a return and an empty stack, return anywhere we were called
+        rule!(path_alias(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr))
+    })
+}
+
 
 fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
     let mut ins = Vec::new();
@@ -216,9 +230,7 @@ fn holmes_prog(holmes: &mut Engine, in_paths: Vec<String>) -> Result<()> {
         let [ var2 ] = {xfer_taint([sema], [var])}
         });
 
-        // If it's a return and an empty stack, return anywhere we were called
-        rule!(path_alias(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr));
-        // If it's a return and we have a stack, pop it
+       // If it's a return and we have a stack, pop it
         rule!(path_alias(src_name, src_addr, stack2, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, stack, ret_name, ret_addr, var, t) & is_ret(ret_name, ret_addr), {
             let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) }
         });
