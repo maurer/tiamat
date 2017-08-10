@@ -115,10 +115,19 @@ fn main() {
     // queries
     holmes_stage2(&mut holmes).unwrap();
     core.run(holmes.quiesce()).unwrap();
-    dump(&mut holmes, "disasm");
-    dump(&mut holmes, "succ");
-    dump(&mut holmes, "true_positive");
-    dump(&mut holmes, "false_positive");
+    // Judge
+    {
+        use std::collections::HashSet;
+        let mut true_positives = HashSet::new();
+        for row in query!(holmes, true_positive([_], [_], name)).unwrap().into_iter() {
+            true_positives.insert(row[0].get().downcast_ref::<String>().unwrap().clone());
+        }
+        let mut false_positives = HashSet::new();
+        for row in query!(holmes, false_positive([_], [_], name)).unwrap().into_iter() {
+            false_positives.insert(row[0].get().downcast_ref::<String>().unwrap().clone());
+        }
+        println!("True Positives: {}\nFalse Positives: {}", true_positives.len(), false_positives.len());
+    }
     dump(&mut holmes, "use_after_free");
 }
 

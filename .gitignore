@@ -1,5 +1,6 @@
 notes
 target
+large_tests_out
 
 samples/Juliet/testcases/*/*.o
 samples/Juliet/testcases/CWE416_Use_After_Free/CWE416
