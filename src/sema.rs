@@ -29,8 +29,8 @@ impl TypeT for SemaType {
     fn name(&self) -> Option<&'static str> {
         Some("sema")
     }
-    fn large_unique(&self) -> bool {
-        true
+    fn large(&self) -> Vec<usize> {
+        vec![0]
     }
     fn extract(&self, rows: &mut RowIter) -> Option<Value> {
         let raw: Json = rows.next().unwrap();
