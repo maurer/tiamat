@@ -48,3 +48,12 @@ pub fn path_sensitive() {
         Ok(())
     })
 }
+
+#[test]
+pub fn remalloc() {
+    single(&|holmes, core| {
+        tiamat::uaf(vec!["./samples/use_after_free/remalloc".to_string()])(holmes, core)?;
+        assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 0);
+        Ok(())
+    })
+}

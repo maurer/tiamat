@@ -64,6 +64,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
         func!(let is_ret : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_ret);
         func!(let is_call : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_call);
+        func!(let is_ret_reg : var -> bool = |v: &var::HVar| v == &var::get_ret());
         func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
         func!(let unpack_deb : largebytes -> [(string, largebytes)] = analyses::unpack_deb);
         rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
@@ -103,12 +104,14 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         let [ arch ] = {get_arch_val([contents])}
       });
 
-        // Add stepover edge (this is kinda janky, since this is a place I'd like to circumscribe)
-        rule!(succ(name, addr, next, (false)) <= succ(name, addr, tgt, (true)) & link_pad(name, [_], tgt) & sema(name, addr, [_], next));
+        rule!(succ_over(name, addr, next) <= succ(name, addr, next, (false)));
+        rule!(succ_over(name, addr, next) <= succ(name, addr, tgt, (true)) & sema(name, addr, [_], next) & link_pad(name, [_], tgt));
 
         rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt, (true)));
         rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt, (true)));
         rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(skip_func(name, addr) <= malloc_call(name, addr));
+        rule!(skip_func(name, addr) <= free_call(name, addr));
         rule!(path_alias(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
         rule!(path_alias(src_name, src, stack, free_name, next, (var::get_arg0()), (true)) <= path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
         // Upgrade set on free
@@ -119,6 +122,15 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         rule!(path_alias(name, src, stack, cur_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
           let [ var2 ] = {xfer_taint([sema], [var])}
       });
+
+        // Normally, if we don't have the function present, we have to stop the path analysis
+        // In the case of malloc, we special case to just filter out the return variable
+        // TODO clobber return _and_ standard clobbers
+      rule!(path_alias(name, src, stack, cur_name, fall, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & skip_func(cur_name, cur) & sema(cur_name, cur, sema, fall) , {
+          let [ var2 ] = {xfer_taint([sema], [var])};
+          let (false) = {is_ret_reg([var2])}
+      });
+
         // If it's a call, a call_site instance will be generated, resolving dynamic calls if
         // needed. Add this onto the stack so any returns actually go here rather than anywhere
         rule!(path_alias(name, src, stack2, next_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
@@ -137,7 +149,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         rule!(use_after_free_flow(name, src, stack, other, loc, (var::get_arg0())) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), (true)) & using_call(other, loc));
 
         rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
-        rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ(bin_name, addr, addr2, (false)));
+        rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ_over(bin_name, addr, addr2));
         rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
         rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr, [_]));
         // TODO there's a bit of overrestriction on name here
@@ -199,6 +211,14 @@ pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
             let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) };
             let trace2 = {trace_push([dst_name], [dst_addr], [trace])}
         });
+
+        // Erase return reg on malloc (basically a single target func summary)
+        rule!(path_alias_trace(name, src, stack, cur_name, fall, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & skip_func(cur_name, cur) & sema(cur_name, cur, sema, fall) , {
+            let [ var2 ] = {xfer_taint([sema], [var])};
+            let (false) = {is_ret_reg([var2])};
+            let trace2 = {trace_push([cur_name], [fall], [trace])}
+        });
+
         rule!(use_after_free(name, src, stack, other, loc, var, trace) <= path_alias_trace(name, src, stack, other, loc, var, (true), trace) & sema(other, loc, sema, [_]), {
           let (true) = {deref_var([sema], [var])}
         });

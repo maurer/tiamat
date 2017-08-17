@@ -108,6 +108,8 @@ fn main() {
         println!("True Positives: {}\nFalse Positives: {}", true_positives.len(), false_positives.len());
     }
     dump(&mut holmes, "use_after_free");
+    dump(&mut holmes, "use_after_free_flow");
+    dump(&mut holmes, "path_alias");
 }
 
 fn dump(holmes: &mut Engine, target: &str) {

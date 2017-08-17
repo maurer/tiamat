@@ -31,6 +31,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(entry(string, string, bitvector, bitvector));
         predicate!(disasm(string, bitvector, string));
         predicate!(succ(string, bitvector, bitvector, bool));
+        predicate!(succ_over(string, bitvector, bitvector));
         predicate!(live(string, bitvector));
         predicate!(seglive(string, uint64, bitvector, uint64, uint64));
         predicate!(sema(string, bitvector, sema, bitvector));
@@ -54,6 +55,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(is_call([binary string], [addr bitvector], bool));
         predicate!(true_positive([binary string], [addr bitvector], [bad_parent string]));
         predicate!(false_positive([binary string], [addr bitvector], [good_parent string]));
-        predicate!(deb_file([deb_name string], [contents largebytes]))
+        predicate!(deb_file([deb_name string], [contents largebytes]));
+        predicate!(skip_func(string, bitvector))
     })
 }
