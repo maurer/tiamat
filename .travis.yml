@@ -24,9 +24,6 @@ before_script:
   # Create the holmes storage directory
   - mkdir -p $HOME/.holmes
 
-  # Import the location of pg_ctl
-  - export PATH=$PATH:/usr/lib/postgresql/9.5/bin
-
 sudo: false
 addons:
   postgresql: 9.5
@@ -35,6 +32,7 @@ addons:
     - ubuntu-toolchain-r-test
     - llvm-toolchain-precise-3.9
     packages:
+    - postgresql-9.5
     - clang-3.9
     - libclang-3.9-dev
     - curl
@@ -51,7 +49,8 @@ rust:
   - beta
   - stable
 
-script: ./tools/small_tests.sh
+script:
+  - PATH=$PATH:/usr/lib/postgresql/9.5/bin ./tools/small_tests.sh
 
 env:
   global:

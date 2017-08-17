@@ -4,6 +4,6 @@ mkdir -p $HOME/.holmes
 cargo build
 export HOLMES_PG_SOCK_DIR=`tools/pg.bash holmes`
 cargo test
-OUT=$1
+OUT=$?
 rm -rf $HOLMES_PG_SOCK_DIR
 exit $OUT
