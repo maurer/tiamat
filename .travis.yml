@@ -20,10 +20,12 @@ before_script:
   - cp -r usr/local/lib/bap/ $HOME/.local/bap/plugins
   - cp -r usr/local/lib/libbap.so.* $HOME/.local/lib/libbap.so
   - cp -r usr/local/include/bap.h $HOME/.local/include
-  # Fetch travis-cargo
-  - |
-      pip install 'travis-cargo<0.2' --user &&
-      export PATH=$HOME/.local/bin:$PATH
+
+  # Create the holmes storage directory
+  - mkdir -p $HOME/.holmes
+
+  # Import the location of pg_ctl
+  - export PATH=$PATH:/usr/lib/postgresql/9.5/bin
 
 sudo: false
 addons:
@@ -49,15 +51,7 @@ rust:
   - beta
   - stable
 
-script:
-  - travis-cargo build
-  - travis-cargo test
-  - travis-cargo bench
-  - travis-cargo --only stable doc
-
-after_success:
-  - travis-cargo coveralls --no-sudo --verify
-  - travis-cargo --only stable doc-upload
+script: ./tools/small_tests.sh
 
 env:
   global:

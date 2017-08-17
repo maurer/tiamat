@@ -11,6 +11,8 @@ LARGE_OUT=large_tests_out
 rm -rf $LARGE_OUT
 mkdir -p $LARGE_OUT
 
+mkdir -p ~/.holmes
+
 echo -e "\e[36mTesting Juliet Sample CWE416\e[39m"
 export TIAMAT_PG_SOCK_DIR=`./tools/pg.bash`
 export RUST_LOG=

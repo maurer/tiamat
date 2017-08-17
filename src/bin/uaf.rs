@@ -10,7 +10,6 @@ extern crate rustc_serialize;
 extern crate url;
 extern crate env_logger;
 extern crate time;
-use std::io::BufRead;
 use holmes::PgDB;
 use holmes::simple::*;
 extern crate log;
@@ -73,11 +72,6 @@ fn main() {
         &db_default_addr,
     );
     opts.optflag("h", "help", "print usage and exit");
-    opts.optflag(
-        "s",
-        "step",
-        "single step when enter is hit, close stdin to go to quiescence",
-    );
     let mut args = env::args();
     let prog_name = args.next().unwrap();
     let matches = opts.parse(args).unwrap_or_else(|x| panic!(x));
@@ -92,21 +86,8 @@ fn main() {
     let mut core = Core::new().unwrap();
     let db = PgDB::new(&db_addr).unwrap();
     let mut holmes = Engine::new(db, core.handle());
-    tiamat::schema::setup(&mut holmes).unwrap();
-    tiamat::uaf_stage1(&mut holmes).unwrap();
-    tiamat::load_files(&mut holmes, in_paths).unwrap();
-    let stdin = ::std::io::stdin();
-    let ls = stdin.lock();
-    if matches.opt_present("s") {
-        for _ in ls.lines() {
-            core.turn(None);
-        }
-    }
-    core.run(holmes.quiesce()).unwrap();
-    // Temp perf trick - delaying execution of long query time rules will make them have fewer
-    // queries
-    tiamat::uaf_stage2(&mut holmes).unwrap();
-    core.run(holmes.quiesce()).unwrap();
+    let uaf = tiamat::uaf(in_paths);
+    uaf(&mut holmes, &mut core).unwrap();
     // Judge
     {
         use std::collections::HashSet;

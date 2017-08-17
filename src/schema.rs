@@ -34,7 +34,6 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(sema(string, bitvector, sema, bitvector));
         predicate!(arch(string, arch));
         predicate!(may_jump(string, bitvector, ubvs));
-        predicate!(insn_type(string, bitvector, blocktype));
         predicate!(linkage(string, string));
         predicate!(link_pad(string, string, bitvector));
         // Filename, malloc_site, exit, var, freed

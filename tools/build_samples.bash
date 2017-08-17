@@ -5,3 +5,4 @@
 export hardeningDisable="all";
 
 make -j9 -C samples/Juliet/testcases/CWE416_Use_After_Free/
+make -j9 -C samples/use_after_free
