@@ -171,7 +171,7 @@ pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
             t.push(name.clone(), addr.clone());
             t
         });
-        rule!(path_alias_trace(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false), trace) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step), {
+        rule!(path_alias_trace(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false), trace) <= use_after_free_flow(src_name, addr, [_], [_], [_], [_]) & sema(src_name, addr, [_], step), {
             let trace = {trace_new([src_name], [step])}
         });
         rule!(path_alias_trace(src_name, src, stack, free_name, next, (var::get_arg0()), (true), trace2) <= path_alias_trace(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_], trace) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next), {
