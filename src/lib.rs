@@ -18,6 +18,8 @@ extern crate log;
 extern crate mktemp;
 
 use holmes::pg::dyn::values::LargeBWrap;
+use bap::high::bitvector::BitVector;
+use trace::Trace;
 
 mod analyses;
 pub mod ubvs;
@@ -26,6 +28,7 @@ pub mod bvlist;
 pub mod stack;
 pub mod sema;
 pub mod var;
+pub mod trace;
 
 pub fn load_files(holmes: &mut Engine, in_paths: &[String]) -> Result<()> {
     let mut ins = Vec::new();
@@ -127,11 +130,11 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         rule!(path_alias(src_name, src_addr, stack2, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, stack, ret_name, ret_addr, var, t) & is_ret(ret_name, ret_addr), {
             let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) }
         });
-        rule!(use_after_free(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & sema(other, loc, sema, [_]), {
+        rule!(use_after_free_flow(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & sema(other, loc, sema, [_]), {
           let (true) = {deref_var([sema], [var])}
         });
         // puts uses the variable, but we're not anlyzing libc for now
-        rule!(use_after_free(name, src, stack, other, loc, (var::get_arg0())) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), (true)) & using_call(other, loc));
+        rule!(use_after_free_flow(name, src, stack, other, loc, (var::get_arg0())) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), (true)) & using_call(other, loc));
 
         rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
         rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ(bin_name, addr, addr2, (false)));
@@ -159,6 +162,62 @@ pub fn uaf_stage2(holmes: &mut Engine) -> Result<()> {
     })
 }
 
+pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
+    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
+    holmes_exec!(holmes, {
+        func!(let trace_new : (string, bitvector) -> trace = |(name, addr): (&String, &BitVector)| trace::Trace::new(name.clone(), addr.clone()));
+        func!(let trace_push : (string, bitvector, trace) -> trace = |(name, addr, trace): (&String, &BitVector, &Trace)| {
+            let mut t = trace.clone();
+            t.push(name.clone(), addr.clone());
+            t
+        });
+        rule!(path_alias_trace(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false), trace) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step), {
+            let trace = {trace_new([src_name], [step])}
+        });
+        rule!(path_alias_trace(src_name, src, stack, free_name, next, (var::get_arg0()), (true), trace2) <= path_alias_trace(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_], trace) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next), {
+            let trace2 = {trace_push([free_name], [next], [trace])}
+        });
+        // Upgrade set on free
+        // If two pointers come from the same allocation site, they may alias. Upgrade them to
+        // freed if anything was freed, just in case
+        rule!(path_alias_trace(name, src, stack, cur_name, cur, var, (true), trace) <= path_alias_trace(name, src, stack, cur_name, cur, var, (false), trace) & path_alias_trace(name, src, stack, cur_name, cur, [_], (true), trace));
+        // If there's a successor, follow that and transfer taint (but not if it's a call)
+        rule!(path_alias_trace(name, src, stack, cur_name, fut, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
+          let [ var2 ] = {xfer_taint([sema], [var])};
+          let trace2 = {trace_push([cur_name], [fut], [trace])}
+        });
+        // If it's a call, a call_site instance will be generated, resolving dynamic calls if
+        // needed. Add this onto the stack so any returns actually go here rather than anywhere
+        rule!(path_alias_trace(name, src, stack2, next_name, fut, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
+        let stack2 = {push_stack([stack], [cur_name], [fall])};
+        let [ var2 ] = {xfer_taint([sema], [var])};
+        let trace2 = {trace_push([next_name], [fut], [trace])}
+        });
+
+        // If it's a return and we have a stack, pop it
+        rule!(path_alias_trace(src_name, src_addr, stack2, dst_name, dst_addr, var, t, trace2) <= path_alias_trace(src_name, src_addr, stack, ret_name, ret_addr, var, t, trace) & is_ret(ret_name, ret_addr), {
+            let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) };
+            let trace2 = {trace_push([dst_name], [dst_addr], [trace])}
+        });
+        rule!(use_after_free(name, src, stack, other, loc, var, trace) <= path_alias_trace(name, src, stack, other, loc, var, (true), trace) & sema(other, loc, sema, [_]), {
+          let (true) = {deref_var([sema], [var])}
+        });
+        // puts uses the variable, but we're not anlyzing libc for now
+        rule!(use_after_free(name, src, stack, other, loc, (var::get_arg0()), trace) <= path_alias_trace(name, src, stack, other, loc, (var::get_arg0()), (true), trace) & using_call(other, loc))
+})
+}
+
+pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
+    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
+    holmes_exec!(holmes, {
+        // If it's a return and an empty stack, return anywhere we were called
+        rule!(path_alias_trace(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, t, trace2) <= path_alias_trace(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, t, trace) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr), {
+            let trace2 = {trace_push([call_name], [dst_addr], [trace])}
+        })
+    })
+}
+
+
 pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
     Box::new(move |holmes, core| {
         schema::setup(holmes)?;
@@ -166,6 +225,10 @@ pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()
         load_files(holmes, &in_paths)?;
         core.run(holmes.quiesce()).unwrap();
         uaf_stage2(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        uaf_trace_stage1(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        uaf_trace_stage2(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         Ok(())
     })

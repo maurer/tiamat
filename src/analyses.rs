@@ -536,7 +536,7 @@ fn check_idx(idx: &Expression, var: &HVar) -> bool {
         Expression::Var(ref v) => (var.offset == None) && (var.inner == *v),
         _ => false,
     };
-    trace!("idx: {:?}: {:?} -> {:?}", idx, var, res);
+    //trace!("idx: {:?}: {:?} -> {:?}", idx, var, res);
     res
 }
 
@@ -557,6 +557,6 @@ fn deref_var_step(stmt: &Statement, var: &HVar) -> bool {
         Move { rhs: ref e, .. } => deref_var_expr(e, var),
         _ => false,
     };
-    trace!("{:?}: {:?} -> {:?}", stmt, var, res);
+    //trace!("{:?}: {:?} -> {:?}", stmt, var, res);
     res
 }

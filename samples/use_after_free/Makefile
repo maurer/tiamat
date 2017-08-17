@@ -1,4 +1,4 @@
-all: func link external.so simple safe
+all: func link external.so simple safe path_sensitive
 
 external.so: external.c
 	gcc -shared -fPIC external.c -o external.so
