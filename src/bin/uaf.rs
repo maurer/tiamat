@@ -33,11 +33,13 @@ fn url_encode(input: &[u8]) -> String {
 fn init_logger() {
     let format = |record: &LogRecord| {
         let t = time::now();
-        format!("{},{:03} - {} - {}",
-                time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
-                t.tm_nsec / 1000_000,
-                record.level(),
-                record.args())
+        format!(
+            "{},{:03} - {} - {}",
+            time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
+            t.tm_nsec / 1000_000,
+            record.level(),
+            record.args()
+        )
     };
 
     let rust_log = env::var("RUST_LOG").unwrap();
@@ -54,22 +56,28 @@ fn main() {
     init_logger();
     let db_default_addr = match env::var("TIAMAT_PG_SOCK_DIR") {
         Ok(dir) => {
-            format!("postgresql://holmes@{}/holmes",
-                    url_encode(&dir.into_bytes()))
+            format!(
+                "postgresql://holmes@{}/holmes",
+                url_encode(&dir.into_bytes())
+            )
         }
         _ => format!("postgres://holmes@%2Fvar%2Frun%2Fpostgresql/holmes"),
     };
     let default_in = "a.out";
     let mut opts = Options::new();
     opts.optmulti("i", "in", "binary to process", default_in);
-    opts.optopt("d",
-                "database",
-                "database connection string",
-                &db_default_addr);
+    opts.optopt(
+        "d",
+        "database",
+        "database connection string",
+        &db_default_addr,
+    );
     opts.optflag("h", "help", "print usage and exit");
-    opts.optflag("s",
-                 "step",
-                 "single step when enter is hit, close stdin to go to quiescence");
+    opts.optflag(
+        "s",
+        "step",
+        "single step when enter is hit, close stdin to go to quiescence",
+    );
     let mut args = env::args();
     let prog_name = args.next().unwrap();
     let matches = opts.parse(args).unwrap_or_else(|x| panic!(x));
@@ -78,9 +86,7 @@ fn main() {
         println!("{}", opts.usage(&brief));
         return;
     }
-    let db_addr = matches
-        .opt_str("d")
-        .unwrap_or(db_default_addr.to_string());
+    let db_addr = matches.opt_str("d").unwrap_or(db_default_addr.to_string());
     let in_paths = matches.opt_strs("i");
 
     let mut core = Core::new().unwrap();
@@ -106,14 +112,16 @@ fn main() {
         use std::collections::HashSet;
         let mut true_positives = HashSet::new();
         for row in query!(holmes, true_positive([_], [_], name))
-                .unwrap()
-                .into_iter() {
+            .unwrap()
+            .into_iter()
+        {
             true_positives.insert(row[0].get().downcast_ref::<String>().unwrap().clone());
         }
         let mut false_positives = HashSet::new();
         for row in query!(holmes, false_positive([_], [_], name))
-                .unwrap()
-                .into_iter() {
+            .unwrap()
+            .into_iter()
+        {
             false_positives.insert(row[0].get().downcast_ref::<String>().unwrap().clone());
         }
         println!("True Positives: {}\nFalse Positives: {}", true_positives.len(), false_positives.len());
