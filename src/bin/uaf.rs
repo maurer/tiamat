@@ -72,6 +72,7 @@ fn main() {
         &db_default_addr,
     );
     opts.optflag("h", "help", "print usage and exit");
+    opts.optflag("s", "skip", "skip over functions not present in the current binary");
     let mut args = env::args();
     let prog_name = args.next().unwrap();
     let matches = opts.parse(args).unwrap_or_else(|x| panic!(x));
@@ -88,6 +89,9 @@ fn main() {
     let mut holmes = Engine::new(db, core.handle());
     let uaf = tiamat::uaf(in_paths);
     uaf(&mut holmes, &mut core).unwrap();
+    if matches.opt_present("s") {
+        rule!(holmes, skip_func(name, addr) <= link_pad(name, [_], tgt)).unwrap();
+    }
     // Judge
     {
         use std::collections::HashSet;
