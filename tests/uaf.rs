@@ -20,3 +20,22 @@ pub fn safe() {
         Ok(())
     })
 }
+
+#[test]
+pub fn func() {
+    single(&|holmes, core| {
+        tiamat::uaf(vec!["./samples/use_after_free/func".to_string()])(holmes, core)?;
+        assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_]))?.len(), 1);
+        Ok(())
+    })
+}
+
+#[test]
+pub fn link() {
+    single(&|holmes, core| {
+        tiamat::uaf(vec!["./samples/use_after_free/func".to_string(),
+                         "./samples/use_after_free/external.so".to_string()])(holmes, core)?;
+        assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_]))?.len(), 1);
+        Ok(())
+    })
+}

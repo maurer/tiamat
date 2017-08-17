@@ -166,6 +166,7 @@ pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()
         load_files(holmes, &in_paths)?;
         core.run(holmes.quiesce()).unwrap();
         uaf_stage2(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
         Ok(())
     })
 }
