@@ -5,7 +5,6 @@ use std::sync::Arc;
 use ubvs::UBVSType;
 use bvlist::BVListType;
 use stack::StackType;
-use typing::BlockTypeType;
 use sema::SemaType;
 
 pub fn setup(holmes: &mut Engine) -> Result<()> {
@@ -13,7 +12,6 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
     try!(holmes.add_type(Arc::new(ArchType)));
     try!(holmes.add_type(Arc::new(UBVSType)));
     try!(holmes.add_type(Arc::new(BVListType)));
-    try!(holmes.add_type(Arc::new(BlockTypeType)));
     try!(holmes.add_type(Arc::new(SemaType)));
     try!(holmes.add_type(Arc::new(StackType)));
     try!(holmes.add_type(Arc::new(VarType)));

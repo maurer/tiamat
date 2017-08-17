@@ -14,7 +14,7 @@ mkdir -p $LARGE_OUT
 echo -e "\e[36mTesting Juliet Sample CWE416\e[39m"
 export TIAMAT_PG_SOCK_DIR=`./tools/pg.bash`
 export RUST_LOG=
-if time cargo run --release -- -i samples/Juliet/testcases/CWE416_Use_After_Free/CWE416 > $LARGE_OUT/CWE416.out 2> $LARGE_OUT/CWE416.err; then
+if time cargo run --bin uaf --release -- -i samples/Juliet/testcases/CWE416_Use_After_Free/CWE416 > $LARGE_OUT/CWE416.out 2> $LARGE_OUT/CWE416.err; then
 	echo -e "\e[32mAnalysis Completed\e[39m"
 	if diff $LARGE_OUT/CWE416.out ./test_outputs/CWE416 ; then
 		echo -e "\e[32mNo Change\e[39m"
