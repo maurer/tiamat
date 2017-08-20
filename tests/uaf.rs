@@ -57,3 +57,12 @@ pub fn remalloc() {
         Ok(())
     })
 }
+
+#[test]
+pub fn inf_trace() {
+    single(&|holmes, core| {
+        tiamat::uaf(vec!["./samples/use_after_free/loop".to_string()])(holmes, core)?;
+        assert_eq!(query!(holmes, true_positive([_], [_], [_]))?.len(), 2);
+        Ok(())
+    })
+}

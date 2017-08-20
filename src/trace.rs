@@ -9,7 +9,9 @@ use bit_vec::BitVec;
 use std::any::Any;
 use std::sync::Arc;
 
-#[derive(Debug,Clone,Hash,PartialOrd,PartialEq)]
+const TRACE_MAX_LEN: usize = 128;
+
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq)]
 pub struct Trace {
     names: Vec<String>,
     addrs: Vec<BitVector>,
@@ -17,10 +19,14 @@ pub struct Trace {
 }
 
 impl Trace {
-    pub fn push(&mut self, name: String, addr: BitVector) {
+    pub fn push(&mut self, name: String, addr: BitVector) -> bool {
+        if self.addrs.len() >= TRACE_MAX_LEN {
+            return false;
+        }
         self.names.push(name);
         self.sql_addrs.push(addr.to_bitvec().clone());
         self.addrs.push(addr);
+        true
     }
     pub fn nil() -> Self {
         Self::load(vec![], vec![])
@@ -29,10 +35,7 @@ impl Trace {
         Self::load(vec![name], vec![addr])
     }
     pub fn load(names: Vec<String>, addrs: Vec<BitVector>) -> Self {
-        let sql_addrs = addrs
-            .iter()
-            .map(|addr| addr.to_bitvec().clone())
-            .collect();
+        let sql_addrs = addrs.iter().map(|addr| addr.to_bitvec().clone()).collect();
         Trace {
             names: names,
             addrs: addrs,
@@ -56,7 +59,7 @@ impl ::std::fmt::Display for Trace {
     }
 }
 
-#[derive(Debug,Clone,Hash,PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct TraceType;
 impl TypeT for TraceType {
     fn name(&self) -> Option<&'static str> {
@@ -65,8 +68,10 @@ impl TypeT for TraceType {
     fn extract(&self, rows: &mut RowIter) -> Option<Value> {
         let raw_names: Array<String> = rows.next().unwrap();
         let raw_addrs: Array<BitVec> = rows.next().unwrap();
-        Some(Arc::new(Trace::load(raw_names.into_iter().collect(),
-                                  raw_addrs.iter().map(|bv| BitVector::new(bv)).collect())))
+        Some(Arc::new(Trace::load(
+            raw_names.into_iter().collect(),
+            raw_addrs.iter().map(|bv| BitVector::new(bv)).collect(),
+        )))
     }
     fn repr(&self) -> Vec<String> {
         vec!["varchar[]".to_string(), "bit varying[]".to_string()]
