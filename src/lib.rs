@@ -46,8 +46,7 @@ pub fn load_files(holmes: &mut Engine, in_paths: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
-    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
+pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
     holmes_exec!(holmes, {
         func!(let get_arch_val : largebytes -> [uint64] = analyses::get_arch_val);
         func!(let seg_wrap : largebytes -> [(largebytes, uint64, bitvector, bitvector, bool, bool, bool)] = analyses::seg_wrap);
@@ -58,14 +57,9 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         func!(let disas : (arch, bitvector, largebytes, uint64) -> [string] = analyses::disas_wrap);
         func!(let rebase : (bitvector, bitvector, bitvector, uint64) -> [(uint64, uint64)] = analyses::rebase);
         func!(let find_pads : largebytes -> [(string, bitvector)] = analyses::get_pads);
-        func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
-        func!(let push_stack : (stack, string, bitvector) -> stack = analyses::push_stack);
-        func!(let pop_stack : stack -> [(stack, string, bitvector)] = analyses::pop_stack);
-        func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
         func!(let is_ret : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_ret);
         func!(let is_call : (arch, bitvector, largebytes, uint64) -> [bool] = analyses::is_call);
         func!(let is_ret_reg : var -> bool = |v: &var::HVar| v == &var::get_ret());
-        func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
         func!(let unpack_deb : largebytes -> [(string, largebytes)] = analyses::unpack_deb);
         rule!(segment(name, id, seg_contents, start, end, r, w, x) <= file(name, file_contents), {
         let [ {id, seg_contents, start, end, r, w, x} ] = {seg_wrap([file_contents])}
@@ -112,6 +106,27 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
         rule!(skip_func(name, addr) <= malloc_call(name, addr));
         rule!(skip_func(name, addr) <= free_call(name, addr));
+        rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
+        rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ_over(bin_name, addr, addr2));
+        rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
+        rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr, [_]));
+        rule!(file(path, bin) <= deb_file([_], deb_bin), {
+            let [ {path, bin} ] = {unpack_deb([deb_bin])}
+        })
+    })?;
+    Ok(())
+}
+
+pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
+    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
+    holmes_exec!(holmes, {
+        func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
+        func!(let push_stack : (stack, string, bitvector) -> stack = analyses::push_stack);
+        func!(let pop_stack : stack -> [(stack, string, bitvector)] = analyses::pop_stack);
+        func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
+        func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
+        rule!(skip_func(name, addr) <= malloc_call(name, addr));
+        rule!(skip_func(name, addr) <= free_call(name, addr));
         rule!(path_alias(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
         rule!(path_alias(src_name, src, stack, free_name, next, (var::get_arg0()), (true)) <= path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
         // Upgrade set on free
@@ -148,21 +163,14 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         // puts uses the variable, but we're not anlyzing libc for now
         rule!(use_after_free_flow(name, src, stack, other, loc, (var::get_arg0())) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), (true)) & using_call(other, loc));
 
-        rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
-        rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ_over(bin_name, addr, addr2));
-        rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
-        rule!(call_site(src_name, src_addr, dst_name, dst_addr) <= link_pad(src_name, func_name, tgt) & succ(src_name, src_addr, tgt, (true)) & entry(dst_name, func_name, dst_addr, [_]));
         // TODO there's a bit of overrestriction on name here
         rule!(true_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
             let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_bad"))}
         });
         rule!(false_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
             let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_good"))}
-        });
-        rule!(file(path, bin) <= deb_file([_], deb_bin), {
-            let [ {path, bin} ] = {unpack_deb([deb_bin])}
         })
-    })?;
+   })?;
     Ok(())
 }
 
@@ -244,15 +252,22 @@ pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
 pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
     Box::new(move |holmes, core| {
         schema::setup(holmes)?;
-        uaf_stage1(holmes)?;
         load_files(holmes, &in_paths)?;
+        basic_setup(holmes)?;
         core.run(holmes.quiesce()).unwrap();
+        info!("Basic analysis complete");
+        uaf_stage1(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        info!("UAF Stage 1 complete");
         uaf_stage2(holmes)?;
         core.run(holmes.quiesce()).unwrap();
+        info!("UAF Stage 2 complete");
         uaf_trace_stage1(holmes)?;
         core.run(holmes.quiesce()).unwrap();
+        info!("UAF Tracing Stage 1 complete");
         uaf_trace_stage2(holmes)?;
         core.run(holmes.quiesce()).unwrap();
+        info!("UAF Tracing Stage 2 complete");
         Ok(())
     })
 }
