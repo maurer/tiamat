@@ -22,9 +22,10 @@ if time cargo run --bin uaf --release -- -i samples/Juliet/testcases/CWE416_Use_
 		echo -e "\e[32mNo Change\e[39m"
 	else
 		echo -e "\e[93mDetection rates have changed! Please examine the output. If it is an improvement, update the reference file.\[e39m"
+		mv *.html $LARGE_OUT
 	fi
 else
 	echo -e "\e[91mAnalysis Failed\nPlease examine $LARGE_OUT/CWE416.err for more details\e[39m"
 fi
 
-rm -rf $TIAMAT_PG_SOCK_DIR use_after_free.html
+rm -rf $TIAMAT_PG_SOCK_DIR
