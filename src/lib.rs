@@ -106,6 +106,9 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
         rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
         rule!(skip_func(name, addr) <= malloc_call(name, addr));
         rule!(skip_func(name, addr) <= free_call(name, addr));
+        //TODO This would be a place we want to circumscribe - we want to step over any function
+        //that isn't present, but not the ones we have loaded up.
+        rule!(skip_func(name, addr) <= link_pad(name, [_], tgt) & succ(name, addr, tgt, (true)));
         rule!(func(bin_name, addr, addr) <= entry(bin_name, func_name, addr, [_]));
         rule!(func(bin_name, entry, addr2) <= func(bin_name, entry, addr) & succ_over(bin_name, addr, addr2));
         rule!(call_site(src_name, src_addr, src_name, dst_addr) <= succ(src_name, src_addr, dst_addr, (true)));
@@ -253,6 +256,7 @@ pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()
     Box::new(move |holmes, core| {
         schema::setup(holmes)?;
         load_files(holmes, &in_paths)?;
+        info!("Files loaded");
         basic_setup(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("Basic analysis complete");
