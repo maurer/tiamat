@@ -103,6 +103,9 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
 
         rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt, (true)));
         rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(malloc_call(name, addr) <= link_pad(name, ("xmalloc"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(malloc_call(name, addr) <= link_pad(name, ("calloc"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(malloc_call(name, addr) <= link_pad(name, ("xcalloc"), tgt) & succ(name, addr, tgt, (true)));
         rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
         rule!(skip_func(name, addr) <= malloc_call(name, addr));
         rule!(skip_func(name, addr) <= free_call(name, addr));
