@@ -114,6 +114,7 @@ fn main() {
     dump(&mut holmes, "use_after_free");
     dump(&mut holmes, "use_after_free_flow");
     dump(&mut holmes, "path_alias");
+    dump(&mut holmes, "path_alias_trace");
 }
 
 fn dump(holmes: &mut Engine, target: &str) {
