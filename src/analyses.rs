@@ -121,12 +121,17 @@ pub fn pop_stack(stack: &Stack) -> Vec<(Stack, String, BitVector)> {
     }
 }
 
-pub fn push_stack((stack, name, tgt): (&Stack, &String, &BitVector)) -> Stack {
+pub fn push_stack((stack, name, tgt): (&Stack, &String, &BitVector)) -> Vec<Stack> {
+    // TODO more rigorously deal with multiple binaries
+    // Outlaw recursion
+    if (stack.1).0.contains(&tgt) {
+        return vec![]
+    }
     let mut ns = stack.0.clone();
     let mut ads = (stack.1).0.clone();
     ns.push(name.clone());
     ads.push(tgt.clone());
-    Stack(ns, BVList(ads))
+    vec![Stack(ns, BVList(ads))]
 }
 
 pub fn rebase(

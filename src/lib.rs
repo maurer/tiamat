@@ -127,7 +127,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
     let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
     holmes_exec!(holmes, {
         func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
-        func!(let push_stack : (stack, string, bitvector) -> stack = analyses::push_stack);
+        func!(let push_stack : (stack, string, bitvector) -> [stack] = analyses::push_stack);
         func!(let pop_stack : stack -> [(stack, string, bitvector)] = analyses::pop_stack);
         func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
         func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
@@ -151,7 +151,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         // If it's a call, a call_site instance will be generated, resolving dynamic calls if
         // needed. Add this onto the stack so any returns actually go here rather than anywhere
         rule!(path_alias(name, src, stack2, next_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
-        let stack2 = {push_stack([stack], [cur_name], [fall])};
+        let [ stack2 ] = {push_stack([stack], [cur_name], [fall])};
         let [ var2 ] = {xfer_taint([sema], [var])}
         });
 
@@ -214,7 +214,7 @@ pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
         // If it's a call, a call_site instance will be generated, resolving dynamic calls if
         // needed. Add this onto the stack so any returns actually go here rather than anywhere
         rule!(path_alias_trace(name, src, stack2, next_name, fut, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
-        let stack2 = {push_stack([stack], [cur_name], [fall])};
+        let [ stack2 ] = {push_stack([stack], [cur_name], [fall])};
         let [ var2 ] = {xfer_taint([sema], [var])};
         let [ trace2 ] = {trace_push([next_name], [fut], [trace])}
         });
