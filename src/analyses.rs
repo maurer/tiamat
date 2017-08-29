@@ -532,6 +532,7 @@ pub fn xfer_taint((sema, var): (&Sema, &HVar)) -> Vec<HVar> {
         .collect()
 }
 
+//TODO: I'm pretty sure this will miss temp_0 = r0 + 3; r1 = *temp_0
 pub fn deref_var((sema, var): (&Sema, &HVar)) -> bool {
     sema.stmts.iter().any(|stmt| deref_var_step(stmt, var))
 }
@@ -539,6 +540,11 @@ pub fn deref_var((sema, var): (&Sema, &HVar)) -> bool {
 fn check_idx(idx: &Expression, var: &HVar) -> bool {
     let res = match *idx {
         Expression::Var(ref v) => (var.offset == None) && (var.inner == *v),
+        Expression::BinOp {
+            op: _,
+            ref lhs,
+            ref rhs,
+        }  => check_idx(lhs, var) || check_idx(rhs, var),
         _ => false,
     };
     //trace!("idx: {:?}: {:?} -> {:?}", idx, var, res);
