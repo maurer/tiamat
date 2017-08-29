@@ -134,11 +134,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         rule!(skip_func(name, addr) <= malloc_call(name, addr));
         rule!(skip_func(name, addr) <= free_call(name, addr));
         rule!(path_alias(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
-        rule!(path_alias(src_name, src, stack, free_name, next, (var::get_arg0()), (true)) <= path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
-        // Upgrade set on free
-        // If two pointers come from the same allocation site, they may alias. Upgrade them to
-        // freed if anything was freed, just in case
-        rule!(path_alias(name, src, stack, cur_name, cur, var, (true)) <= path_alias(name, src, stack, cur_name, cur, var, (false)) & path_alias(name, src, stack, cur_name, cur, [_], (true)));
+        rule!(path_alias(src_name, src, stack, free_name, next, af, (true)) <= path_alias(src_name, src, stack, free_name, free_addr, af, [_]) & path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
         // If there's a successor, follow that and transfer taint (but not if it's a call)
         rule!(path_alias(name, src, stack, cur_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
           let [ var2 ] = {xfer_taint([sema], [var])}
