@@ -106,7 +106,7 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
         rule!(malloc_call(name, addr) <= link_pad(name, ("xmalloc"), tgt) & succ(name, addr, tgt, (true)));
         rule!(malloc_call(name, addr) <= link_pad(name, ("calloc"), tgt) & succ(name, addr, tgt, (true)));
         rule!(malloc_call(name, addr) <= link_pad(name, ("xcalloc"), tgt) & succ(name, addr, tgt, (true)));
-        rule!(using_call(name, addr) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
+        rule!(func_uses(name, addr, (var::get_arg0())) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
         rule!(skip_func(name, addr) <= malloc_call(name, addr));
         rule!(skip_func(name, addr) <= free_call(name, addr));
         //TODO This would be a place we want to circumscribe - we want to step over any function
@@ -163,7 +163,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
           let (true) = {deref_var([sema], [var])}
         });
         // puts uses the variable, but we're not anlyzing libc for now
-        rule!(use_after_free_flow(name, src, stack, other, loc, (var::get_arg0())) <= path_alias(name, src, stack, other, loc, (var::get_arg0()), (true)) & using_call(other, loc));
+        rule!(use_after_free_flow(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & func_uses(other, loc, var));
 
         // TODO there's a bit of overrestriction on name here
         rule!(true_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
@@ -184,6 +184,53 @@ pub fn uaf_stage2(holmes: &mut Engine) -> Result<()> {
     })
 }
 
+pub fn const_prop(holmes: &mut Engine) -> Result<()> {
+    // This is woefully inadequate for true constant propagation - since each instruction can read
+    // multiple variables, and I don't have any kind of aggregation, monotonic or otherwise
+    // available, I'd have to make a custom aggregation rule to do that. This would work, but would
+    // slow down operation, and right now I don't really care about tracking through ops, just
+    // through movs
+    // This is also _wrong_ at the moment in that it's strict linear stepping - it ignores any
+    // notion of jumps or calls or anything else. This is in large part because it is only an
+    // advisory hack to discover the addresses of RO string constants for printf at the moment >_>
+    holmes_exec!(holmes, {
+        func!(let const_init : sema -> [(var, bitvector)] = analyses::const_init);
+        func!(let const_prop : (sema, var, bitvector) -> [(var, bitvector)] = analyses::const_prop);
+        rule!(poss_const(name, addr, var, k) <= sema(name, [_], sema, addr), {
+            let [{var, k}] = {const_init([sema])}
+        });
+        rule!(poss_const(name, addr, var2, k2) <= sema(name, prev, sema, addr) & poss_const(name, prev, var, k), {
+            let [{var2, k2}] = {const_prop([sema], [var], [k])}
+        })
+    })
+}
+
+pub fn str_const(holmes: &mut Engine) -> Result<()> {
+    holmes_exec!(holmes, {
+        func!(let str_extract: (bitvector, bitvector, bitvector, largebytes) -> [string] = analyses::str_extract);
+        // If it's an RO segment, go ahead and try to extract a string
+        // TODO: for some reason, rodata segments are getting marked as unreadable. Skipping check
+        // on that...
+        rule!(poss_string(name, addr, var, s) <= segment(name, [_], bin, start, end, [_], [_], [_]) & poss_const(name, addr, var, p), {
+            let [ s ] = {str_extract([start], [end], [p], [bin])}
+        })
+    })
+}
+
+pub fn printf_formats(holmes: &mut Engine) -> Result<()> {
+    holmes_exec!(holmes, {
+        func!(let fmt_str_vars: string -> [var] = analyses::fmt_str_vars);
+        fact!(printf_like(("failure")));
+        // If it's an RO segment, go ahead and try to extract a string
+        // TODO: for some reason, rodata segments are getting marked as unreadable. Skipping check
+        // on that...
+        rule!(func_uses(name, addr, var) <= printf_like(func_name) & link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)) & poss_string(name, addr, (var::get_arg0()), fmt), {
+            let [ var ] = {fmt_str_vars([fmt])}
+        })
+    })
+}
+
+
 pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
     let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
     holmes_exec!(holmes, {
@@ -199,13 +246,9 @@ pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
         rule!(path_alias_trace(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false), trace) <= use_after_free_flow(src_name, addr, [_], [_], [_], [_]) & sema(src_name, addr, [_], step), {
             let trace = {trace_new([src_name], [step])}
         });
-        rule!(path_alias_trace(src_name, src, stack, free_name, next, (var::get_arg0()), (true), trace2) <= path_alias_trace(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_], trace) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next), {
+        rule!(path_alias_trace(src_name, src, stack, free_name, next, var, (true), trace2) <= path_alias_trace(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_], trace) & path_alias_trace(src_name, src, stack, free_name, free_addr, var, [_], trace) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next), {
             let [ trace2 ] = {trace_push([free_name], [next], [trace])}
         });
-        // Upgrade set on free
-        // If two pointers come from the same allocation site, they may alias. Upgrade them to
-        // freed if anything was freed, just in case
-        rule!(path_alias_trace(name, src, stack, cur_name, cur, var, (true), trace) <= path_alias_trace(name, src, stack, cur_name, cur, var, (false), trace) & path_alias_trace(name, src, stack, cur_name, cur, [_], (true), trace));
         // If there's a successor, follow that and transfer taint (but not if it's a call)
         rule!(path_alias_trace(name, src, stack, cur_name, fut, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
           let [ var2 ] = {xfer_taint([sema], [var])};
@@ -236,7 +279,7 @@ pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
           let (true) = {deref_var([sema], [var])}
         });
         // puts uses the variable, but we're not anlyzing libc for now
-        rule!(use_after_free(name, src, stack, other, loc, (var::get_arg0()), trace) <= path_alias_trace(name, src, stack, other, loc, (var::get_arg0()), (true), trace) & using_call(other, loc))
+        rule!(use_after_free(name, src, stack, other, loc, var, trace) <= path_alias_trace(name, src, stack, other, loc, var, (true), trace) & func_uses(other, loc, var))
 })
 }
 
@@ -259,6 +302,15 @@ pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()
         basic_setup(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("Basic analysis complete");
+        const_prop(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        info!("Constant propagation complete");
+        str_const(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        info!("String constant detection complete");
+        printf_formats(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        info!("Printf-like argument usage information detected");
         uaf_stage1(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("UAF Stage 1 complete");

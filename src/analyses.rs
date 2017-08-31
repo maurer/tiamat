@@ -12,6 +12,8 @@ use bvlist::BVList;
 use stack::Stack;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::collections::HashMap;
+use var;
 
 macro_rules! get_image {
     ($bap:expr, $contents:expr) => {{
@@ -20,6 +22,20 @@ macro_rules! get_image {
             Err(_) => return vec![]
         }
     }}
+}
+
+pub fn fmt_str_vars(fmt: &String) -> Vec<HVar> {
+    let mut args: i8 = 1;
+    for w in fmt.chars().collect::<Vec<_>>().as_slice().windows(2) {
+        if w[0] == '%' {
+            if w[1] == '%' {
+                args -= 1;
+            } else {
+                args += 1;
+            }
+        }
+    }
+    (0..args).map(|i| var::get_arg_n(i as u8)).collect()
 }
 
 pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
@@ -110,6 +126,78 @@ pub fn find_parent(
         }
     }
     vec![]
+}
+
+fn compute_expr(e: &Expression, ks: &HashMap<HVar, BitVector>) -> Option<BitVector> {
+    use bap::high::bil::Expression::*;
+    match *e {
+        Var(ref v) => ks.get(&HVar {inner: v.clone(), offset: None}).cloned(),
+        Load { index: ref idx, .. } => promote_idx(idx).and_then(|v| ks.get(&v)).cloned(),
+        Const(ref bv) => Some(bv.clone()),
+        _ => None
+    }
+}
+
+fn const_prop_h(stmt: &Statement, ks: &mut HashMap<HVar, BitVector>) {
+    use bap::high::bil::Statement::*;
+    match *stmt {
+        // Register update
+        Move {
+            lhs: ref reg,
+            rhs: ref e,
+        } if is_reg(&reg) => {
+            let var = HVar {
+                inner: reg.clone(),
+                offset: None,
+            };
+            match compute_expr(e, ks) {
+                Some(bv) => {ks.insert(var, bv); ()},
+                None => {ks.remove(&var); ()}
+            }
+        }
+        // Memory Write
+        Move {
+            lhs: ref mem,
+            rhs: ref e,
+        } if is_mem(&mem) => {
+            match *e {
+                Expression::Store {
+                    memory: _,
+                    index: ref idx,
+                    value: ref val,
+                    endian: _,
+                    size: _,
+                } => {
+                    match (promote_idx(idx), compute_expr(val, ks)) {
+                        (Some(var), Some(bv)) => {ks.insert(var, bv); ()},
+                        (Some(var), None) => {ks.remove(&var); ()},
+                        _ => ()
+                    }
+                }
+                _ => (),
+            }
+        }
+        _ => (),
+    }
+}
+
+pub fn const_init(sema: &Sema) -> Vec<(HVar, BitVector)> {
+    let mut ks = HashMap::new();
+    for stmt in sema.stmts.iter() {
+        const_prop_h(stmt, &mut ks)
+    }
+    // No temporaries or flags
+    ks.into_iter().filter(|kv| !kv.0.inner.tmp && (kv.0.inner.type_ != bap::high::bil::Type::Immediate(1))).collect()
+}
+
+pub fn const_prop((sema, var, k): (&Sema, &HVar, &BitVector)) -> Vec<(HVar, BitVector)> {
+    let mut ks = HashMap::new();
+    ks.insert(var.clone(), k.clone());
+    for stmt in sema.stmts.iter() {
+        const_prop_h(stmt, &mut ks)
+    }
+    // No temporaries or flags
+    ks.into_iter().filter(|kv| !kv.0.inner.tmp && (kv.0.inner.type_ != bap::high::bil::Type::Immediate(1))).collect()
 }
 
 pub fn pop_stack(stack: &Stack) -> Vec<(Stack, String, BitVector)> {
@@ -289,6 +377,27 @@ pub fn is_call((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) ->
             Ok(insn.is_call())
         }
     }))
+}
+
+pub fn str_extract((start, end, addr, mut fd): (&BitVector, &BitVector, &BitVector, &File)) -> Vec<String> {
+    // If the address is not in range, abort
+    if !((start <= addr) && (addr < end)) {
+        return vec![]
+    }
+    let off = addr.to_u64().unwrap() - start.to_u64().unwrap();
+    fd.seek(SeekFrom::Start(off)).unwrap();
+    let mut bytes: Vec<u8> = Vec::new();
+    for vb in fd.bytes() {
+        let v = vb.unwrap();
+        if v == 0 {
+            break;
+        }
+        bytes.push(v);
+    }
+    match String::from_utf8(bytes) {
+        Ok(out) => vec![out],
+        _ => vec![]
+    }
 }
 
 // TODO: holmes doesn't allow multiple heads yet, so we lift twice to get the disasm

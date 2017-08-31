@@ -9,7 +9,7 @@ use bit_vec::BitVec;
 use std::any::Any;
 use std::sync::Arc;
 
-const TRACE_MAX_LEN: usize = 128;
+const TRACE_MAX_LEN: usize = 80;
 
 #[derive(Debug, Clone, Hash, PartialOrd, PartialEq)]
 pub struct Trace {

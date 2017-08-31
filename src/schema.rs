@@ -44,7 +44,6 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(path_alias_trace([source_binary string], [malloc_site bitvector], [stack stack], [cur_binary string], [def_site bitvector], [def_var var], [freed bool], [trace trace]));
         predicate!(free_call(string, bitvector));
         predicate!(malloc_call(string, bitvector));
-        predicate!(using_call(string, bitvector));
         // filename, source, errpoint, errvar
         predicate!(use_after_free_flow([source_binary string], [source bitvector "Allocation site for the use-after-free"], [stack stack "callstack at time of use"], [sink_binary string], [sink bitvector "Use site for the use after free"], [loc var "Where the pointer was when it was dereferenced"]) : "Possible use-after-free paths");
         predicate!(use_after_free([source_binary string], [source bitvector "Allocation site for the use-after-free"], [stack stack "callstack at time of use"], [sink_binary string], [sink bitvector "Use site for the use after free"], [loc var "Where the pointer was when it was dereferenced"], [trace trace]) : "Possible use-after-free paths");
@@ -56,6 +55,10 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(true_positive([binary string], [addr bitvector], [bad_parent string]));
         predicate!(false_positive([binary string], [addr bitvector], [good_parent string]));
         predicate!(deb_file([deb_name string], [contents largebytes]));
-        predicate!(skip_func(string, bitvector))
+        predicate!(skip_func(string, bitvector));
+        predicate!(poss_const(string, bitvector, var, bitvector));
+        predicate!(poss_string(string, bitvector, var, string));
+        predicate!(func_uses(string, bitvector, var));
+        predicate!(printf_like(string))
     })
 }

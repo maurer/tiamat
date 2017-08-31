@@ -11,7 +11,7 @@ use std::sync::Arc;
 use rustc_serialize::json::{Json, Decoder, ToJson, encode};
 use rustc_serialize::Decodable;
 
-#[derive(Debug, Clone, Hash, PartialOrd, PartialEq, RustcDecodable, RustcEncodable)]
+#[derive(Debug, Clone, Hash, PartialOrd, PartialEq, RustcDecodable, RustcEncodable, Eq)]
 pub struct HVar {
     pub inner: Variable,
     pub offset: Option<BitVector>,
@@ -34,6 +34,27 @@ pub fn get_arg0() -> HVar {
     HVar {
         inner: Variable {
             name: "RDI".to_string(),
+            type_: bap::high::bil::Type::Immediate(64),
+            tmp: false,
+            index: 0,
+        },
+        offset: None,
+    }
+}
+
+pub fn get_arg_n(n: u8) -> HVar {
+    let name = match n {
+        0 => "RDI",
+        1 => "RSI",
+        2 => "RDX",
+        3 => "RCX",
+        4 => "R8",
+        5 => "R9",
+        _ => panic!("No implementation for argument {}", n)
+    };
+    HVar {
+        inner: Variable {
+            name: name.to_string(),
             type_: bap::high::bil::Type::Immediate(64),
             tmp: false,
             index: 0,
