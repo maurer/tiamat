@@ -1,20 +1,12 @@
 #[macro_use]
 extern crate holmes;
 extern crate getopts;
-extern crate bap;
-extern crate num;
-extern crate postgres;
-extern crate postgres_array;
-extern crate bit_vec;
-extern crate rustc_serialize;
 extern crate url;
 extern crate env_logger;
 extern crate time;
 use holmes::PgDB;
 use holmes::simple::*;
 extern crate log;
-
-extern crate mktemp;
 
 extern crate tiamat;
 
