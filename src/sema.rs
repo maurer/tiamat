@@ -29,8 +29,8 @@ impl TypeT for SemaType {
     fn name(&self) -> Option<&'static str> {
         Some("sema")
     }
-    fn large(&self) -> Vec<usize> {
-        vec![0]
+    fn large(&self) -> bool {
+        true
     }
     fn extract(&self, rows: &mut RowIter) -> Option<Value> {
         let raw: Json = rows.next().unwrap();
@@ -40,8 +40,8 @@ impl TypeT for SemaType {
         };
         Some(Arc::new(typed))
     }
-    fn repr(&self) -> Vec<String> {
-        vec!["jsonb".to_string()]
+    fn repr(&self) -> &'static str {
+        "jsonb"
     }
 }
 

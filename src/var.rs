@@ -86,8 +86,8 @@ impl TypeT for VarType {
         let mut decoder = Decoder::new(raw);
         Some(Arc::new(HVar::decode(&mut decoder).unwrap()))
     }
-    fn repr(&self) -> Vec<String> {
-        vec!["jsonb".to_string()]
+    fn repr(&self) -> &'static str {
+        "jsonb"
     }
     typet_boiler!();
 }

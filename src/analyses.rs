@@ -8,8 +8,6 @@ use std::cmp::min;
 use num::ToPrimitive;
 use holmes::pg::dyn::values::LargeBWrap;
 use var::HVar;
-use bvlist::BVList;
-use stack::Stack;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::collections::HashMap;
@@ -24,6 +22,24 @@ macro_rules! get_image {
     }}
 }
 
+//TODO get first class fact IDs so that I don't need to engage in this farce
+pub fn hashify((i, n, a): (&u64, &String, &BitVector)) -> u64 {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    i.hash(&mut hasher);
+    n.hash(&mut hasher);
+    a.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn trace_len_inc(i : &u64) -> Vec<u64> {
+    if *i < 70 {
+        vec![*i + 1]
+    } else {
+        vec![]
+    }
+}
 pub fn fmt_str_vars(fmt: &String) -> Vec<HVar> {
     let mut args: i8 = 1;
     for w in fmt.chars().collect::<Vec<_>>().as_slice().windows(2) {
@@ -85,47 +101,6 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
             (file_name, LargeBWrap { inner: out })
         })
         .collect()
-}
-
-pub fn find_parent(
-    (sym_bin, sym_name, sym_start, sym_end, src, stack, suff): (&String,
-                                                                &String,
-                                                                &BitVector,
-                                                                &BitVector,
-                                                                &BitVector,
-                                                                &Stack,
-                                                                &String),
-) -> Vec<String> {
-    if !sym_name.ends_with(suff) {
-        // This isn't one o fthe symbols we're supposed to find stuff in
-        return vec![];
-    }
-    let mut addrs: Vec<_> = (stack.1)
-        .0
-        .iter()
-        .zip(stack.0.iter())
-        .filter_map(|(addr, name)| if name == sym_bin {
-            Some(addr)
-        } else {
-            None
-        })
-        .collect();
-    addrs.push(src);
-    for addr in addrs {
-        if (addr < sym_end) && (addr >= sym_start) {
-            trace!(
-                "Bad address found: {} <= {} <= {} -> {}\tsrc={}\tstack={}",
-                sym_start,
-                addr,
-                sym_end,
-                sym_name,
-                src,
-                stack
-            );
-            return vec![sym_name.clone()];
-        }
-    }
-    vec![]
 }
 
 fn compute_expr(e: &Expression, ks: &HashMap<HVar, BitVector>) -> Option<BitVector> {
@@ -198,28 +173,6 @@ pub fn const_prop((sema, var, k): (&Sema, &HVar, &BitVector)) -> Vec<(HVar, BitV
     }
     // No temporaries or flags
     ks.into_iter().filter(|kv| !kv.0.inner.tmp && (kv.0.inner.type_ != bap::high::bil::Type::Immediate(1))).collect()
-}
-
-pub fn pop_stack(stack: &Stack) -> Vec<(Stack, String, BitVector)> {
-    let mut ns = stack.0.clone();
-    let mut ads = (stack.1).0.clone();
-    match (ns.pop(), ads.pop()) {
-        (Some(name), Some(addr)) => vec![(Stack(ns, BVList(ads)), name, addr)],
-        _ => vec![],
-    }
-}
-
-pub fn push_stack((stack, name, tgt): (&Stack, &String, &BitVector)) -> Vec<Stack> {
-    // TODO more rigorously deal with multiple binaries
-    // Outlaw recursion
-    if (stack.1).0.contains(&tgt) {
-        return vec![]
-    }
-    let mut ns = stack.0.clone();
-    let mut ads = (stack.1).0.clone();
-    ns.push(name.clone());
-    ads.push(tgt.clone());
-    vec![Stack(ns, BVList(ads))]
 }
 
 pub fn rebase(

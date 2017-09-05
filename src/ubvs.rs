@@ -48,8 +48,8 @@ impl TypeT for UBVSType {
             Some(repr) => UpperBVSet::BVSet(repr.iter().map(|bv| BitVector::new(bv)).collect()),
         }))
     }
-    fn repr(&self) -> Vec<String> {
-        vec!["bit varying[]".to_string()]
+    fn repr(&self) -> &'static str {
+        "bit varying[]"
     }
     typet_boiler!();
 }

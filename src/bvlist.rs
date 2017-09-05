@@ -31,8 +31,8 @@ impl TypeT for BVListType {
             BVList(raw.iter().map(|bv| BitVector::new(bv)).collect()),
         ))
     }
-    fn repr(&self) -> Vec<String> {
-        vec!["bit varying[] not null".to_string()]
+    fn repr(&self) -> &'static str {
+        "bit varying[] not null"
     }
     typet_boiler!();
 }

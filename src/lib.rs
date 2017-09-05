@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate holmes;
-extern crate getopts;
 extern crate bap;
 extern crate num;
 #[macro_use]
@@ -8,9 +7,6 @@ extern crate postgres;
 extern crate postgres_array;
 extern crate bit_vec;
 extern crate rustc_serialize;
-extern crate url;
-extern crate env_logger;
-extern crate time;
 use holmes::simple::*;
 #[macro_use]
 extern crate log;
@@ -18,17 +14,13 @@ extern crate log;
 extern crate mktemp;
 
 use holmes::pg::dyn::values::LargeBWrap;
-use bap::high::bitvector::BitVector;
-use trace::Trace;
 
 mod analyses;
 pub mod ubvs;
 pub mod schema;
 pub mod bvlist;
-pub mod stack;
 pub mod sema;
 pub mod var;
-pub mod trace;
 
 pub fn load_files(holmes: &mut Engine, in_paths: &[String]) -> Result<()> {
     let mut ins = Vec::new();
@@ -99,13 +91,16 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
       });
 
         rule!(succ_over(name, addr, next) <= succ(name, addr, next, (false)));
-        rule!(succ_over(name, addr, next) <= succ(name, addr, tgt, (true)) & sema(name, addr, [_], next) & link_pad(name, [_], tgt));
+        rule!(succ_over(name, addr, next) <= succ(name, addr, tgt, (true)) & sema(name, addr, [_], next));
 
-        rule!(free_call(name, addr) <= link_pad(name, ("free"), tgt) & succ(name, addr, tgt, (true)));
-        rule!(malloc_call(name, addr) <= link_pad(name, ("malloc"), tgt) & succ(name, addr, tgt, (true)));
-        rule!(malloc_call(name, addr) <= link_pad(name, ("xmalloc"), tgt) & succ(name, addr, tgt, (true)));
-        rule!(malloc_call(name, addr) <= link_pad(name, ("calloc"), tgt) & succ(name, addr, tgt, (true)));
-        rule!(malloc_call(name, addr) <= link_pad(name, ("xcalloc"), tgt) & succ(name, addr, tgt, (true)));
+        func!(let is_free_name : string -> bool = |s : &String| s == "free");
+        func!(let is_malloc_name : string -> bool = |s : &String| (s == "malloc") || (s == "xmalloc") || (s == "calloc") || (s == "xcalloc"));
+        rule!(free_call(name, addr) <= link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)), {
+            let (true) = {is_free_name([func_name])}
+        });
+        rule!(malloc_call(name, addr) <= link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)), {
+            let (true) = {is_malloc_name([func_name])}
+        });
         rule!(func_uses(name, addr, (var::get_arg0())) <= link_pad(name, ("puts"), tgt) & succ(name, addr, tgt, (true)));
         rule!(skip_func(name, addr) <= malloc_call(name, addr));
         rule!(skip_func(name, addr) <= free_call(name, addr));
@@ -124,16 +119,13 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
 }
 
 pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
-    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
     holmes_exec!(holmes, {
         func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
-        func!(let push_stack : (stack, string, bitvector) -> [stack] = analyses::push_stack);
-        func!(let pop_stack : stack -> [(stack, string, bitvector)] = analyses::pop_stack);
         func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
-        func!(let find_parent : (string, string, bitvector, bitvector, bitvector, stack, string) -> [string] = analyses::find_parent);
-        rule!(skip_func(name, addr) <= malloc_call(name, addr));
-        rule!(skip_func(name, addr) <= free_call(name, addr));
-        rule!(path_alias(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
+        // This function is a bit unholy, and is working around the lack of ability to refer to
+        // FactIds in the language itself.
+        func!(let hashify : (uint64, string, bitvector) -> uint64 = analyses::hashify);
+        rule!(path_alias(src_name, addr, (0), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & sema(src_name, addr, [_], step));
         rule!(path_alias(src_name, src, stack, free_name, next, af, (true)) <= path_alias(src_name, src, stack, free_name, free_addr, af, [_]) & path_alias(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next));
         // If there's a successor, follow that and transfer taint (but not if it's a call)
         rule!(path_alias(name, src, stack, cur_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
@@ -148,39 +140,32 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
           let (false) = {is_ret_reg([var2])}
       });
 
+        // If we're at a call site, create a stack record
+        rule!(stack(stack2, stack, cur_name, fall) <= path_alias([_], [_], stack, cur_name, cur, var, [_]) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, [_]), {
+            let stack2 = {hashify([stack], [cur_name], [fall])}
+        });
         // If it's a call, a call_site instance will be generated, resolving dynamic calls if
         // needed. Add this onto the stack so any returns actually go here rather than anywhere
-        rule!(path_alias(name, src, stack2, next_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
-        let [ stack2 ] = {push_stack([stack], [cur_name], [fall])};
+        rule!(path_alias(name, src, stack2, next_name, fut, var2, t) <= path_alias(name, src, stack, cur_name, cur, var, t) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut) & stack(stack2, stack, cur_name, fall), {
         let [ var2 ] = {xfer_taint([sema], [var])}
         });
 
         // If it's a return and we have a stack, pop it
-        rule!(path_alias(src_name, src_addr, stack2, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, stack, ret_name, ret_addr, var, t) & is_ret(ret_name, ret_addr), {
-            let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) }
-        });
+        rule!(path_alias(src_name, src_addr, stack2, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, stack, ret_name, ret_addr, var, t) & is_ret(ret_name, ret_addr) & stack(stack, stack2, dst_name, dst_addr));
         rule!(use_after_free_flow(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & sema(other, loc, sema, [_]), {
           let (true) = {deref_var([sema], [var])}
         });
         // puts uses the variable, but we're not anlyzing libc for now
-        rule!(use_after_free_flow(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & func_uses(other, loc, var));
+        rule!(use_after_free_flow(name, src, stack, other, loc, var) <= path_alias(name, src, stack, other, loc, var, (true)) & func_uses(other, loc, var))
 
-        // TODO there's a bit of overrestriction on name here
-        rule!(true_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
-            let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_bad"))}
-        });
-        rule!(false_positive(name, src, parent) <= use_after_free(name, src, stack, [_], [_], [_]) & entry(name, sym_name, sym_start, sym_end), {
-            let [parent] = {find_parent([name], [sym_name], [sym_start], [sym_end], [src], [stack], ("_good"))}
-        })
-   })?;
+    })?;
     Ok(())
 }
 
 pub fn uaf_stage2(holmes: &mut Engine) -> Result<()> {
-    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
     holmes_exec!(holmes, {
         // If it's a return and an empty stack, return anywhere we were called
-        rule!(path_alias(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr))
+        rule!(path_alias(src_name, src_addr, (0), call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, (0), ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr))
     })
 }
 
@@ -232,67 +217,104 @@ pub fn printf_formats(holmes: &mut Engine) -> Result<()> {
 
 
 pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
-    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
     holmes_exec!(holmes, {
-        func!(let trace_new : (string, bitvector) -> trace = |(name, addr): (&String, &BitVector)| trace::Trace::new(name.clone(), addr.clone()));
-        func!(let trace_push : (string, bitvector, trace) -> [trace] = |(name, addr, trace): (&String, &BitVector, &Trace)| {
-            let mut t = trace.clone();
-            if t.push(name.clone(), addr.clone()) {
-                vec![t]
-            } else {
-                vec![]
-            }
-        });
-        rule!(path_alias_trace(src_name, addr, (empty_stack.clone()), src_name, step, (var::get_ret()), (false), trace) <= use_after_free_flow(src_name, addr, [_], [_], [_], [_]) & sema(src_name, addr, [_], step), {
-            let trace = {trace_new([src_name], [step])}
-        });
-        rule!(path_alias_trace(src_name, src, stack, free_name, next, var, (true), trace2) <= path_alias_trace(src_name, src, stack, free_name, free_addr, (var::get_arg0()), [_], trace) & path_alias_trace(src_name, src, stack, free_name, free_addr, var, [_], trace) & free_call(free_name, free_addr) & sema(free_name, free_addr, [_], next), {
-            let [ trace2 ] = {trace_push([free_name], [next], [trace])}
-        });
-        // If there's a successor, follow that and transfer taint (but not if it's a call)
-        rule!(path_alias_trace(name, src, stack, cur_name, fut, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
-          let [ var2 ] = {xfer_taint([sema], [var])};
-          let [ trace2 ] = {trace_push([cur_name], [fut], [trace])}
-        });
-        // If it's a call, a call_site instance will be generated, resolving dynamic calls if
-        // needed. Add this onto the stack so any returns actually go here rather than anywhere
-        rule!(path_alias_trace(name, src, stack2, next_name, fut, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut), {
-        let [ stack2 ] = {push_stack([stack], [cur_name], [fall])};
-        let [ var2 ] = {xfer_taint([sema], [var])};
-        let [ trace2 ] = {trace_push([next_name], [fut], [trace])}
+        func!(let trace_len_inc : uint64 -> [ uint64 ] = analyses::trace_len_inc);
+
+        // is_normal is derived for calls which don't need special handling
+        rule!(is_normal(name, addr) <= link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)), {
+            let (false) = {is_malloc_name([func_name])};
+            let (false) = {is_free_name([func_name])}
         });
 
-        // If it's a return and we have a stack, pop it
-        rule!(path_alias_trace(src_name, src_addr, stack2, dst_name, dst_addr, var, t, trace2) <= path_alias_trace(src_name, src_addr, stack, ret_name, ret_addr, var, t, trace) & is_ret(ret_name, ret_addr), {
-            let [ {stack2, dst_name, dst_addr} ] = {pop_stack([stack]) };
-            let [ trace2 ] = {trace_push([dst_name], [dst_addr], [trace])}
+        // Produce a one-step trace with an empty stack at every uaf_flow malloc site
+        rule!(trace(trace, (0), (0), name, addr, (1)) <= use_after_free_flow(name, addr, [_], [_], [_], [_]), {
+            let trace = {hashify((0), [name], [addr])}
         });
 
-        // Erase return reg on malloc (basically a single target func summary)
-        rule!(path_alias_trace(name, src, stack, cur_name, fall, var2, t, trace2) <= path_alias_trace(name, src, stack, cur_name, cur, var, t, trace) & skip_func(cur_name, cur) & sema(cur_name, cur, sema, fall) , {
-            let [ var2 ] = {xfer_taint([sema], [var])};
-            let (false) = {is_ret_reg([var2])};
-            let [ trace2 ] = {trace_push([cur_name], [fall], [trace])}
+        // If we hae a non-call succ, just extend the trace
+        rule!(trace(trace2, stack, trace, name, addr2, len2) <= trace(trace, stack, [_], name, addr, len) & succ(name, addr, addr2, (false)), {
+            let [ len2 ] = {trace_len_inc([len])};
+            let trace2 = {hashify([trace], [name], [addr2])}
+        }); 
+
+        // If we have a skipped function, just extend the trace to the fallthrough
+        rule!(trace(trace2, stack, trace, name, fall, len2) <= trace(trace, stack, [_], name, addr, len) & skip_func(name, addr) & sema(name, addr, [_], fall), {
+            let [ len2 ] = {trace_len_inc([len])};
+            let trace2 = {hashify([trace], [name], [fall])}
+        }); 
+
+        // If we have a return and a stack, extend the trace to the return value
+        rule!(trace(trace2, stack2, trace, dst_name, dst_addr, len2) <= trace(trace, stack, [_], ret_name, ret_addr, len) & is_ret(ret_name, ret_addr) & stack(stack, stack2, dst_name, dst_addr), {
+            let [ len2 ] = {trace_len_inc([len])};
+            let trace2 = {hashify([trace], [dst_name], [dst_addr])}
         });
 
-        rule!(use_after_free(name, src, stack, other, loc, var, trace) <= path_alias_trace(name, src, stack, other, loc, var, (true), trace) & sema(other, loc, sema, [_]), {
-          let (true) = {deref_var([sema], [var])}
+        // If we have a trace to a call, extend the stack
+        rule!(trace(trace2, stack2, trace, tgt_name, tgt_addr, len2) <= trace(trace, stack, [_], call_name, call_addr, len) & call_site(call_name, call_addr, tgt_name, tgt_addr) & sema(call_name, call_addr, [_], fall) & stack(stack2, stack, call_name, fall), {
+            let [ len2 ] = {trace_len_inc([len])};
+            let trace2 = {hashify([trace], [tgt_name], [tgt_addr])}
         });
-        // puts uses the variable, but we're not anlyzing libc for now
-        rule!(use_after_free(name, src, stack, other, loc, var, trace) <= path_alias_trace(name, src, stack, other, loc, var, (true), trace) & func_uses(other, loc, var))
-})
-}
 
-pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
-    let empty_stack = stack::Stack(vec![], bvlist::BVList(vec![]));
-    holmes_exec!(holmes, {
-        // If it's a return and an empty stack, return anywhere we were called
-        rule!(path_alias_trace(src_name, src_addr, (empty_stack.clone()), call_name, dst_addr, var, t, trace2) <= path_alias_trace(src_name, src_addr, (empty_stack.clone()), ret_name, ret_addr, var, t, trace) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr), {
-            let [ trace2 ] = {trace_push([call_name], [dst_addr], [trace])}
+        // If we have a return and no stack, extend the trace anywhere we can go
+        rule!(trace(trace2, (0), trace, call_name, dst_addr, len2) <= trace(trace, (0), [_], ret_name, ret_addr, len)  & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & is_ret(ret_name, ret_addr) & sema(call_name, call_addr, [_], dst_addr), {
+            let [ len2 ] = {trace_len_inc([len])};
+            let trace2 = {hashify([trace], [call_name], [dst_addr])}
         })
     })
 }
 
+pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
+    holmes_exec!(holmes, { 
+        // Initialize with a trace right after malloc
+        rule!(path_alias_trace(src_name, addr, (var::get_ret()), (false), trace) <= use_after_free_flow(src_name, addr, [_], [_], [_], [_]) & trace(trace, (0), (0), src_name, addr, [_]));
+
+        // If something is free'd, upgrade the alias set at that tracepoint
+        rule!(path_alias_trace(src_name, src, var, (true), trace2) <= path_alias_trace(src_name, src, (var::get_arg0()), [_], trace) & path_alias_trace(src_name, src, var, [_], trace) & free_call(free_name, free_addr) & trace(trace2, [_], trace, free_name, free_addr, [_]));
+
+        // If the instruction is not a call or return, advance
+        rule!(path_alias_trace(name, src, var2, t, trace2) <= path_alias_trace(name, src, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & sema(cur_name, cur, sema, [_]) & succ(cur_name, cur, [_], (false)), {
+          let [ var2 ] = {xfer_taint([sema], [var])}
+        });
+
+        // Erase return reg on skipped function call
+        rule!(path_alias_trace(name, src, var, t, trace2) <= path_alias_trace(name, src, var, t, trace) & skip_func(cur_name, cur) & sema(cur_name, cur, sema, [_]) & trace(trace2, [_], trace, cur_name, cur, [_]), {
+            let (false) = {is_ret_reg([var])}
+        });
+
+        // On followed function call, propagate
+        rule!(path_alias_trace(name, src, var, t, trace2) <= path_alias_trace(name, src, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & succ(cur_name, cur, next, (true)));
+        // On followed return, propagate
+        rule!(path_alias_trace(name, src, var, t, trace2) <= path_alias_trace(name, src, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & is_ret(cur_name, cur));
+
+        rule!(use_after_free(name, src, other, loc, var, trace2) <= path_alias_trace(name, src, var, (true), trace) & trace(trace2, [_], trace, other, loc, [_]) & sema(other, loc, sema, [_]), {
+          let (true) = {deref_var([sema], [var])}
+        });
+        // puts uses the variable, but we're not anlyzing libc for now
+        rule!(use_after_free(name, src, other, loc, var, trace) <= path_alias_trace(name, src, var, (true), trace) & func_uses(other, loc, var) & trace(trace2, [_], trace, other, loc, [_]))
+})
+}
+
+pub fn grading(holmes: &mut Engine) -> Result<()> {
+    holmes_exec!(holmes, {
+        rule!(true_positive(name, src, parent) <= use_after_free(name, src, [_], [_], [_], trace) & trace(trace, stack, [_], [_], [_], [_]) & bad_stack(stack, parent));
+        rule!(false_positive(name, src, parent) <= use_after_free(name, src, [_], [_], [_], trace) & trace(trace, stack, [_], [_], [_], [_]) & good_stack(stack, parent));
+        rule!(bad_stack(stack, parent) <= bad_stack(sub, parent) & stack(stack, sub, [_], [_]));
+        rule!(good_stack(stack, parent) <= good_stack(sub, parent) & stack(stack, sub, [_], [_]));
+        func!(let has_substr : (string, string) -> bool = |(hay, need) : (&String, &String)| hay.contains(need));
+        rule!(bad_stack(stack, func_name) <= stack(stack, [_], name, addr) & func(name, func_addr, addr) & entry(name, func_name, func_addr, [_]), {
+            let (true) = {has_substr([func_name], ("_bad"))}
+        });
+        rule!(good_stack(stack, func_name) <= stack(stack, [_], name, addr) & func(name, func_addr, addr) & entry(name, func_name, func_addr, [_]), {
+            let (true) = {has_substr([func_name], ("_good"))}
+        });
+        rule!(true_positive(name, src, func_name) <= use_after_free(name, src, [_], [_], [_], trace) & trace(trace, [_], [_], name, loc, [_]) & func(name, func_addr, loc) & entry(name, func_name, func_addr, [_]), {
+            let (true) = {has_substr([func_name], ("_bad"))}
+        });
+        rule!(false_positive(name, src, func_name) <= use_after_free(name, src, [_], [_], [_], trace) & trace(trace, [_], [_], name, loc, [_]) & func(name, func_addr, loc) & entry(name, func_name, func_addr, [_]), {
+            let (true) = {has_substr([func_name], ("_good"))}
+        })
+    })
+}
 
 pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
     Box::new(move |holmes, core| {
@@ -323,6 +345,9 @@ pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()
         uaf_trace_stage2(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("UAF Tracing Stage 2 complete");
+        grading(holmes)?;
+        core.run(holmes.quiesce()).unwrap();
+        info!("Grading Complete");
         Ok(())
     })
 }

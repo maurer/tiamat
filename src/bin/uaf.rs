@@ -88,14 +88,14 @@ fn main() {
     {
         use std::collections::HashSet;
         let mut true_positives = HashSet::new();
-        for row in query!(holmes, true_positive([_], [_], name))
+        for row in query!(holmes, true_positive([_], [_], parent))
             .unwrap()
             .into_iter()
         {
             true_positives.insert(row[0].get().downcast_ref::<String>().unwrap().clone());
         }
         let mut false_positives = HashSet::new();
-        for row in query!(holmes, false_positive([_], [_], name))
+        for row in query!(holmes, false_positive([_], [_], parent))
             .unwrap()
             .into_iter()
         {
