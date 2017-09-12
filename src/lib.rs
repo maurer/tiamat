@@ -94,7 +94,7 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
         rule!(succ_over(name, addr, next) <= succ(name, addr, tgt, (true)) & sema(name, addr, [_], next));
 
         func!(let is_free_name : string -> bool = |s : &String| s == "free");
-        func!(let is_malloc_name : string -> bool = |s : &String| (s == "malloc") || (s == "xmalloc") || (s == "calloc") || (s == "xcalloc"));
+        func!(let is_malloc_name : string -> bool = |s : &String| (s == "malloc") || (s == "xmalloc") || (s == "calloc") || (s == "xcalloc") || (s == "qcalloc") || (s == "qmalloc"));
         rule!(free_call(name, addr) <= link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)), {
             let (true) = {is_free_name([func_name])}
         });
