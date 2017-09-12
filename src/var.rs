@@ -50,7 +50,7 @@ pub fn get_arg_n(n: u8) -> HVar {
         3 => "RCX",
         4 => "R8",
         5 => "R9",
-        _ => panic!("No implementation for argument {}", n)
+        _ => panic!("No implementation for argument {}", n),
     };
     HVar {
         inner: Variable {
