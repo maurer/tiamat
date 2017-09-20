@@ -64,7 +64,11 @@ fn main() {
         &db_default_addr,
     );
     opts.optflag("h", "help", "print usage and exit");
-    opts.optflag("s", "skip", "skip over functions not present in the current binary");
+    opts.optflag(
+        "s",
+        "skip",
+        "skip over functions not present in the current binary",
+    );
     let mut args = env::args();
     let prog_name = args.next().unwrap();
     let matches = opts.parse(args).unwrap_or_else(|x| panic!(x));
@@ -82,7 +86,7 @@ fn main() {
     let uaf = tiamat::uaf(in_paths);
     uaf(&mut holmes, &mut core).unwrap();
     if matches.opt_present("s") {
-        rule!(holmes, skip_func(name, addr) <= link_pad(name, [_], tgt)).unwrap();
+        rule!(holmes, cmd_opt_skip_dyn: skip_func(name, addr) <= link_pad(name, [_], tgt)).unwrap();
     }
     // Judge
     {
@@ -103,12 +107,24 @@ fn main() {
         }
         println!("True Positives: {}\nFalse Positives: {}", true_positives.len(), false_positives.len());
     }
+    dump(&mut holmes, "path_alias");
+    dump(&mut holmes, "free_call");
     dump(&mut holmes, "use_after_free");
     dump(&mut holmes, "use_after_free_flow");
+    dump_profile(&holmes, "uaf");
 }
 
 fn dump(holmes: &mut Engine, target: &str) {
     let data = holmes.render(&target.to_string()).unwrap();
     let mut out_fd = std::fs::File::create(format!("{}.html", target)).unwrap();
     out_fd.write_all(data.as_bytes()).unwrap();
+}
+
+fn dump_profile(holmes: &Engine, target: &str) {
+    let mut profiles = holmes.dump_profile();
+    profiles.sort_by(|p0, p1| p0.rule_time.cmp(&p1.rule_time));
+    let mut out_fd = std::fs::File::create(format!("{}.hprof", target)).unwrap();
+    for profile in profiles {
+        write!(out_fd, "{:?}\n", profile).unwrap();
+    }
 }
