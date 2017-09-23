@@ -111,6 +111,7 @@ fn main() {
     dump(&mut holmes, "free_call");
     dump(&mut holmes, "use_after_free");
     dump(&mut holmes, "use_after_free_flow");
+    dump(&mut holmes, "lift");
     dump_profile(&holmes, "uaf");
 }
 

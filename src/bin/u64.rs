@@ -15,7 +15,6 @@ use bap::high::bitvector::BitVector;
 
 use getopts::Options;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
-use std::io::Write;
 use std::env;
 use log::{LogRecord, LogLevelFilter};
 use env_logger::LogBuilder;
@@ -81,7 +80,6 @@ fn main() {
         return;
     }
     let db_addr = matches.opt_str("d").unwrap_or(db_default_addr.to_string());
-    let in_paths = matches.opt_strs("i");
 
     let mut core = Core::new().unwrap();
     let db = PgDB::new(&db_addr).unwrap();
@@ -94,10 +92,4 @@ fn main() {
         let alloc64 = {to64([alloc])}
     }).unwrap();
     core.run(holmes.quiesce()).unwrap();
-}
-
-fn dump(holmes: &mut Engine, target: &str) {
-    let data = holmes.render(&target.to_string()).unwrap();
-    let mut out_fd = std::fs::File::create(format!("{}.html", target)).unwrap();
-    out_fd.write_all(data.as_bytes()).unwrap();
 }
