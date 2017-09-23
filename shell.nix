@@ -31,4 +31,4 @@ stdenv.mkDerivation rec {
   buildInputs = [ rust libbap postgresql openssl vim ];
   LIBCLANG_PATH = "${llvmPackages.clang-unwrapped}/lib";
 }
-) {rust = nixpkgs.rustChannels.nightly.rust; }
+) {rust = nixpkgs.rustChannels.stable.rust; }
