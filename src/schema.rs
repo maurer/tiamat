@@ -25,15 +25,20 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
                            bool,
                            bool));
         predicate!(entry(string, string, bitvector, bitvector));
-        predicate!(disasm(string, bitvector, string));
+        predicate!(lift(
+                [binary string],
+                [address bitvector],
+                [bil sema],
+                [fallthrough bitvector],
+                [disassembly string],
+                [is_call bool],
+                [is_ret bool]));
+
         predicate!(succ(string, bitvector, bitvector, bool));
         predicate!(succ_over(string, bitvector, bitvector));
         predicate!(live(string, bitvector));
         predicate!(seglive(string, uint64, bitvector, uint64, uint64));
-        predicate!(sema(string, bitvector, sema, bitvector));
         predicate!(arch(string, arch));
-        predicate!(may_jump(string, bitvector, ubvs));
-        predicate!(linkage(string, string));
         predicate!(link_pad(string, string, bitvector));
         predicate!(stack([id uint64], [prev uint64], [bin string], [addr bitvector]));
         predicate!(trace([id uint64], [stack uint64], [prev uint64], [bin string], [addr bitvector], [len uint64]));
@@ -48,8 +53,6 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(func([binary string], [entry bitvector], [addr bitvector]) : "addr is reachable from the function at entry without a return");
         predicate!(call_site([source_binary string], [source_addr bitvector], [dest_binary string], [dest_addr bitvector]));
         predicate!(path_step([source_binary string], [source_addr bitvector], [dest_binary string], [dest_addr bitvector]));
-        predicate!(is_ret([binary string], [addr bitvector]) : "Instruction at this address is a conventional return");
-        predicate!(is_call([binary string], [addr bitvector], bool));
         predicate!(true_positive([binary string], [addr bitvector], string));
         predicate!(false_positive([binary string], [addr bitvector], string));
         predicate!(deb_file([deb_name string], [contents largebytes]));
