@@ -36,6 +36,11 @@ pub fn hashify((i, n, a): (&u64, &String, &BitVector)) -> u64 {
 pub fn trace_len_inc(i: &u64) -> Vec<u64> {
     if *i < 70 { vec![*i + 1] } else { vec![] }
 }
+
+pub fn stack_len_inc(i: &u64) -> Vec<u64> {
+    if *i < 5 { vec![*i + 1] } else { vec![] }
+}
+
 pub fn fmt_str_vars(fmt: &String) -> Vec<HVar> {
     let mut args: i8 = 1;
     for w in fmt.chars().collect::<Vec<_>>().as_slice().windows(2) {

@@ -35,7 +35,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(may_jump(string, bitvector, ubvs));
         predicate!(linkage(string, string));
         predicate!(link_pad(string, string, bitvector));
-        predicate!(stack([id uint64], [prev uint64], [bin string], [addr bitvector]));
+        predicate!(stack([id uint64], [prev uint64], [bin string], [addr bitvector], [len uint64]));
         predicate!(trace([id uint64], [stack uint64], [prev uint64], [bin string], [addr bitvector], [len uint64]));
         // Filename, malloc_site, exit, var, freed
         predicate!(path_alias([source_binary string], [malloc_site bitvector], [stack uint64], [cur_binary string], [def_site bitvector], [def_var var], [freed bool]));

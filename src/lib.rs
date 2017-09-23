@@ -14,6 +14,7 @@ extern crate log;
 extern crate mktemp;
 
 use holmes::pg::dyn::values::LargeBWrap;
+use bap::high::bitvector::BitVector;
 
 mod analyses;
 pub mod ubvs;
@@ -159,6 +160,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
     holmes_exec!(holmes, {
         func!(let xfer_taint : (sema, var) -> [var] = analyses::xfer_taint);
         func!(let deref_var : (sema, var) -> bool = analyses::deref_var);
+        func!(let stack_len_inc : uint64 -> [ uint64 ] = analyses::stack_len_inc);
         // This function is a bit unholy, and is working around the lack of ability to refer to
         // FactIds in the language itself.
         // FACTID nondet across revisions of compiler, perf hit, harder to read output
@@ -182,8 +184,11 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
           let (false) = {is_ret_reg([var2])}
       });
 
+        fact!(stack(0, 0, "", (BitVector::nil()), 0));
+
         // If we're at a call site, create a stack record
-        rule!(flow_stack_push: stack(stack2, stack, cur_name, fall) <= path_alias([_], [_], stack, cur_name, cur, var, [_]) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, [_]), {
+        rule!(flow_stack_push: stack(stack2, stack, cur_name, fall, len2) <= path_alias([_], [_], stack, cur_name, cur, var, [_]) & sema(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, [_]) & stack{id = stack, len = len}, {
+            let [ len2 ] = {stack_len_inc([len])};
             let stack2 = {hashify([stack], [cur_name], [fall])}
         });
         // If it's a call, a call_site instance will be generated, resolving dynamic calls if
