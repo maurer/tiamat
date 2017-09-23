@@ -35,7 +35,8 @@ pub fn link() {
     single(&|holmes, core| {
         tiamat::uaf(vec!["./samples/use_after_free/func".to_string(),
                          "./samples/use_after_free/external.so".to_string()])(holmes, core)?;
-        assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 1);
+        assert_eq!(query!(holmes, use_after_free_flow([_]))?.len(), 1);
+        assert!(query!(holmes, use_after_free([_]))?.len() > 0);
         Ok(())
     })
 }

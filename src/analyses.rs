@@ -305,7 +305,7 @@ pub fn successors((sema, fall_addr): (&Sema, &BitVector)) -> Vec<BitVector> {
 
 pub fn lift_wrap(
     (arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64),
-) -> Vec<(Sema, BitVector)> {
+) -> Vec<(Sema, BitVector, String, bool, bool)> {
     let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
     fd.read_exact(&mut bin).unwrap();
@@ -317,22 +317,7 @@ pub fn lift_wrap(
         let insn = code.insn();
         let sema = insn.semantics();
         let stmts: Vec<_> = sema.iter().map(|bb| Statement::from_basic(&bb)).collect();
-        Ok((Sema { stmts: stmts }, fall))
-    }))
-}
-
-pub fn is_ret((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> Vec<bool> {
-    let mut bin: [u8; 16] = [0; 16];
-    fd.seek(SeekFrom::Start(*start)).unwrap();
-    fd.read_exact(&mut bin).unwrap();
-
-    to_vec(Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch)?;
-        {
-            let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
-            let insn = code.insn();
-            Ok(insn.is_return())
-        }
+        Ok((Sema { stmts: stmts }, fall, insn.to_string(), insn.is_call(), insn.is_return()))
     }))
 }
 
@@ -341,21 +326,6 @@ fn to_vec<T>(r: bap::basic::Result<T>) -> Vec<T> {
         Ok(x) => vec![x],
         _ => vec![],
     }
-}
-
-pub fn is_call((arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64)) -> Vec<bool> {
-    let mut bin: [u8; 16] = [0; 16];
-    fd.seek(SeekFrom::Start(*start)).unwrap();
-    fd.read_exact(&mut bin).unwrap();
-
-    to_vec(Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch)?;
-        {
-            let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
-            let insn = code.insn();
-            Ok(insn.is_call())
-        }
-    }))
 }
 
 pub fn str_extract(
