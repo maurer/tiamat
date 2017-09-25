@@ -7,7 +7,7 @@ extern crate tiamat;
 pub fn simple() {
     single(&|holmes, core| {
         tiamat::uaf(vec!["./samples/use_after_free/simple".to_string()])(holmes, core)?;
-        assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 2);
+        assert!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len() >= 1);
         Ok(())
     })
 }
@@ -23,9 +23,10 @@ pub fn safe() {
 
 #[test]
 pub fn func() {
-    single(&|holmes, core| {
+    single(&|mut holmes, core| {
         tiamat::uaf(vec!["./samples/use_after_free/func".to_string()])(holmes, core)?;
-        assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 1);
+        core.run(holmes.quiesce()).unwrap();
+        assert_eq!(query!(holmes, use_after_free([_]))?.len(), 1);
         Ok(())
     })
 }
@@ -35,6 +36,7 @@ pub fn link() {
     single(&|holmes, core| {
         tiamat::uaf(vec!["./samples/use_after_free/func".to_string(),
                          "./samples/use_after_free/external.so".to_string()])(holmes, core)?;
+        core.run(holmes.quiesce()).unwrap();
         assert_eq!(query!(holmes, use_after_free_flow([_]))?.len(), 1);
         assert!(query!(holmes, use_after_free([_]))?.len() > 0);
         Ok(())
@@ -70,3 +72,10 @@ pub fn inf_trace() {
         Ok(())
     })
 }
+fn dump(holmes: &mut Engine, target: &str) {
+    use std::io::Write;
+    let data = holmes.render(&target.to_string()).unwrap();
+    let mut out_fd = std::fs::File::create(format!("{}.html", target)).unwrap();
+    out_fd.write_all(data.as_bytes()).unwrap();
+}
+

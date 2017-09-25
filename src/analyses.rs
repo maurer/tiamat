@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use bap::basic::{Image, Arch, Bap, BasicDisasm};
 use bap::high::bil::{Statement, Expression, Variable, Type, BinOp};
 use bap::high::bitvector::BitVector;
@@ -34,7 +35,7 @@ pub fn hashify((i, n, a): (&u64, &String, &BitVector)) -> u64 {
 }
 
 pub fn trace_len_inc(i: &u64) -> Vec<u64> {
-    if *i < 70 { vec![*i + 1] } else { vec![] }
+    if *i < 30 { vec![*i + 1] } else { vec![] }
 }
 
 pub fn stack_len_inc(i: &u64) -> Vec<u64> {
@@ -61,6 +62,7 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
     use mktemp::Temp;
     use std::path::Path;
     let mut buf = Vec::new();
+    fd.seek(SeekFrom::Start(0)).unwrap();
     fd.read_to_end(&mut buf).unwrap();
     let deb_temp = Temp::new_file().unwrap();
     let deb_path_buf = deb_temp.to_path_buf();
@@ -228,6 +230,7 @@ fn fresh() -> u64 {
 
 pub fn seg_wrap(mut fd: &File) -> Vec<(u64, LargeBWrap, BitVector, BitVector, bool, bool, bool)> {
     let mut contents = Vec::new();
+    fd.seek(SeekFrom::Start(0)).unwrap();
     fd.read_to_end(&mut contents).unwrap();
     Bap::with(|bap| {
         let image = get_image!(bap, contents);
@@ -306,18 +309,49 @@ pub fn successors((sema, fall_addr): (&Sema, &BitVector)) -> Vec<BitVector> {
 pub fn lift_wrap(
     (arch, addr, mut fd, start): (&Arch, &BitVector, &File, &u64),
 ) -> Vec<(Sema, BitVector, String, bool, bool)> {
-    let mut bin: [u8; 16] = [0; 16];
     fd.seek(SeekFrom::Start(*start)).unwrap();
-    fd.read_exact(&mut bin).unwrap();
-    to_vec(Bap::with(|bap| {
-        let disas = BasicDisasm::new(&bap, *arch)?;
-        let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
-        let len = code.len();
-        let fall = addr + len;
-        let insn = code.insn();
-        let sema = insn.semantics();
-        let stmts: Vec<_> = sema.iter().map(|bb| Statement::from_basic(&bb)).collect();
-        Ok((Sema { stmts: stmts }, fall, insn.to_string(), insn.is_call(), insn.is_return()))
+    to_vec(Bap::with(move |bap| {
+        let mut bin: [u8; 16] = [0; 16];
+        let mut fd = fd;
+        let mut may_jump = false;
+        let mut stmts = Vec::new();
+        let mut is_call = false;
+        let mut is_ret = false;
+        let mut disasm = String::new();
+        let mut fall: BitVector = addr.clone();
+        let mut pre_read = 0;
+        let mut first = true;
+        let mut addr: BitVector = addr.clone();
+        while !may_jump {
+            fd.read_exact(&mut bin[pre_read..]).unwrap();
+            let disas = BasicDisasm::new(&bap, *arch)?;
+            let code = disas.disasm(&bin, addr.to_u64().unwrap())?;
+            let len = code.len();
+            let insn = code.insn();
+            let sema = insn.semantics();
+            if !first && (insn.is_call() || insn.is_return()) {
+                // We want to put calls + rets in their own BBs to make
+                // analysis rules a bit easier
+                break;
+            }
+            first = false;
+            stmts.extend(sema.iter().map(|bb| Statement::from_basic(&bb)));
+            write!(&mut disasm, "{}\n", insn.to_string()).unwrap();
+            is_call = insn.is_call();
+            is_ret = insn.is_return();
+            fall = addr.clone() + len;
+            may_jump = insn.may_affect_control_flow();
+            if !may_jump {
+                addr = fall.clone();
+                pre_read = 16 - len;
+                for i in 0..pre_read {
+                    bin[i] = bin[i + len];
+                }
+            }
+        }
+
+        disasm.pop();
+        Ok((Sema { stmts: stmts }, fall, disasm, is_call, is_ret))
     }))
 }
 
@@ -380,6 +414,7 @@ pub fn succ_wrap_upper((sema, fall_addr): (&Sema, &BitVector)) -> UpperBVSet {
 
 pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
     let mut b = Vec::new();
+    fd.seek(SeekFrom::Start(0)).unwrap();
     fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
         let image = get_image!(bap, b);
@@ -402,6 +437,7 @@ pub fn sym_wrap(mut fd: &File) -> Vec<(String, BitVector, BitVector)> {
 
 pub fn get_arch_val(mut fd: &File) -> Vec<Arch> {
     let mut b = Vec::new();
+    fd.seek(SeekFrom::Start(0)).unwrap();
     fd.read_to_end(&mut b).unwrap();
     Bap::with(|bap| {
         let image = get_image!(bap, b);
@@ -416,6 +452,7 @@ pub fn get_pads(mut fd: &File) -> Vec<(String, BitVector)> {
     use mktemp::Temp;
     use std::io::prelude::*;
     let mut buf = Vec::new();
+    fd.seek(SeekFrom::Start(0)).unwrap();
     fd.read_to_end(&mut buf).unwrap();
     let elf_temp = Temp::new_file().unwrap();
     let elf_path_buf = elf_temp.to_path_buf();
@@ -592,9 +629,17 @@ pub fn xfer_taint((sema, var): (&Sema, &HVar)) -> Vec<HVar> {
         .collect()
 }
 
-//TODO: I'm pretty sure this will miss temp_0 = r0 + 3; r1 = *temp_0
 pub fn deref_var((sema, var): (&Sema, &HVar)) -> bool {
-    sema.stmts.iter().any(|stmt| deref_var_step(stmt, var))
+    let mut vars = vec![var.clone()];
+    for stmt in sema.stmts.iter() {
+        for var in vars.iter() {
+            if deref_var_step(stmt, var) {
+                return true;
+            }
+        }
+        vars = proc_stmt(vars, stmt);
+    }
+    return false;
 }
 
 fn check_idx(idx: &Expression, var: &HVar) -> bool {
