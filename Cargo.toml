@@ -24,10 +24,10 @@ version = "0.15"
 features = ["with-bit-vec", "with-rustc-serialize"]
 
 [dependencies.holmes]
-path = "../holmes"
+git = "https://github.com/maurer/holmes"
 
 [dependencies.bap]
-path = "../bap-rust"
+git = "https://github.com/maurer/bap-rust"
 features = ["holmes_support", "json"]
 
 [profile.release]
