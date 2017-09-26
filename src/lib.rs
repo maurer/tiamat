@@ -325,8 +325,9 @@ pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
             let (false) = {is_ret_reg([var])}
         });
 
-        // On followed function call, propagate
-        rule!(uaf_trace_call: path_alias_trace(name, src, var, t, trace2) <= path_alias_trace(name, src, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & succ(cur_name, cur, next, (true)));
+        // On followed function call, propagate. Entry is used here as a proxy for "call we will
+        // follow" due to no circumscription yet
+        rule!(uaf_trace_call: path_alias_trace(name, src, var, t, trace2) <= path_alias_trace(name, src, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & succ(cur_name, cur, next, (true)) & entry(cur_name, [_], next, [_]));
         // On followed return, propagate
         rule!(uaf_trace_ret: path_alias_trace(name, src, var, t, trace2) <= path_alias_trace(name, src, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & lift {binary = cur_name, address = cur, is_ret = (true)})
     })
