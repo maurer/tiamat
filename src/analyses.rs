@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use bap::basic::{Image, Arch, Bap, BasicDisasm};
+use bap::basic::{Image, Arch, Bap, BasicDisasm, Cast, BitSize};
 use bap::high::bil::{Statement, Expression, Variable, Type, BinOp};
 use bap::high::bitvector::BitVector;
 use bap;
@@ -106,6 +106,25 @@ pub fn unpack_deb(mut fd: &File) -> Vec<(String, LargeBWrap)> {
         .collect()
 }
 
+fn compute_op(op: ::bap::basic::BinOp, lhs: BitVector, rhs: BitVector) -> Option<BitVector> {
+    use bap::basic::BinOp::*;
+    match op {
+        Add => Some(&lhs + &rhs),
+        _ => None
+    }
+}
+fn compute_cast(k: Cast, bs: BitSize, v: BitVector) -> Option<BitVector> {
+    match k {
+        Cast::Low => {
+            let mut bv = v.into_bitvec();
+            bv.truncate(bs as usize);
+            Some(BitVector::new(&bv))
+        }
+        Cast::Unsigned => Some(BitVector::new_unsigned(v.unum(), bs as usize)),
+        _ => None,
+    }
+}
+
 fn compute_expr(e: &Expression, ks: &HashMap<HVar, BitVector>) -> Option<BitVector> {
     use bap::high::bil::Expression::*;
     match *e {
@@ -117,6 +136,16 @@ fn compute_expr(e: &Expression, ks: &HashMap<HVar, BitVector>) -> Option<BitVect
         }
         Load { index: ref idx, .. } => promote_idx(idx).and_then(|v| ks.get(&v)).cloned(),
         Const(ref bv) => Some(bv.clone()),
+        Cast { kind: kind, width: bs, arg: ref expr } =>
+            match compute_expr(expr, ks) {
+                Some(bv) => compute_cast(kind, bs, bv),
+                None => None
+            },
+        BinOp { op: op, lhs: ref lhs, rhs: ref rhs } =>
+            match (compute_expr(lhs, ks), compute_expr(rhs, ks)) {
+                (Some(lhs_v), Some(rhs_v)) => compute_op(op, lhs_v, rhs_v),
+                _ => None
+            },
         _ => None,
     }
 }
