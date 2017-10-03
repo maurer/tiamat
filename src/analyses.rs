@@ -11,7 +11,8 @@ use holmes::pg::dyn::values::LargeBWrap;
 use var::HVar;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use var;
 
 macro_rules! get_image {
@@ -35,7 +36,7 @@ pub fn hashify((i, n, a): (&u64, &String, &BitVector)) -> u64 {
 }
 
 pub fn trace_len_inc(i: &u64) -> Vec<u64> {
-    if *i < 30 { vec![*i + 1] } else { vec![] }
+    if *i < 60 { vec![*i + 1] } else { vec![] }
 }
 
 pub fn stack_len_inc(i: &u64) -> Vec<u64> {
@@ -136,7 +137,7 @@ fn compute_expr(e: &Expression, ks: &HashMap<HVar, BitVector>) -> Option<BitVect
         }
         Load { index: ref idx, .. } => promote_idx(idx).and_then(|v| ks.get(&v)).cloned(),
         Const(ref bv) => Some(bv.clone()),
-        Cast { kind: kind, width: bs, arg: ref expr } =>
+        Cast { kind, width: bs, arg: ref expr } =>
             match compute_expr(expr, ks) {
                 Some(bv) => compute_cast(kind, bs, bv),
                 None => None
@@ -205,6 +206,19 @@ fn const_prop_h(stmt: &Statement, ks: &mut HashMap<HVar, BitVector>) {
     }
 }
 
+pub fn is_computed_jump(sema: &Sema) -> bool {
+    //TODO this isn't quite accurate, it doesn't deal with ITE at all
+    //The point is to detect indirect calls though, so it'll suffice for now
+    for stmt in sema.stmts.iter() {
+        match stmt {
+        &Statement::Jump(Expression::Const(_)) => (),
+        &Statement::Jump(_) => return true,
+        _ => ()
+        }
+    }
+    return false
+}
+
 pub fn const_init(sema: &Sema) -> Vec<(HVar, BitVector)> {
     let mut ks = HashMap::new();
     for stmt in sema.stmts.iter() {
@@ -215,6 +229,65 @@ pub fn const_init(sema: &Sema) -> Vec<(HVar, BitVector)> {
         .filter(|kv| {
             !kv.0.inner.tmp && (kv.0.inner.type_ != bap::high::bil::Type::Immediate(1))
         })
+        .collect()
+}
+
+fn stack_hvar(hv: &HVar) -> bool {
+    let name = &hv.inner.name;
+    (name == "RBP") || (name == "RSP")
+}
+
+fn heap_prop(stmt: &Statement, ks: &mut Vec<HashSet<HVar>>) {
+    let mut all_tracked = HashSet::new();
+    for ass in ks.iter_mut() {
+        *ass = HashSet::from_iter(proc_stmt(ass.iter().cloned().collect::<Vec<_>>(), stmt).into_iter());
+        all_tracked.extend(ass.iter().cloned());
+    }
+    match *stmt {
+        Statement::Move {
+            ref lhs,
+            ref rhs
+        } if is_reg(lhs) => {
+            match *rhs {
+                Expression::Load {
+                    ref index,
+                    ..
+                } => {
+                    let hvar = HVar {
+                        inner: lhs.clone(),
+                        offset: None
+                    };
+                    if !all_tracked.contains(&hvar) {
+                        // This variable doesn't contain a tracked pointer already
+                        match promote_idx(index) {
+                            Some(ref hv) if !stack_hvar(hv) => {
+                                let mut x = HashSet::new();
+                                x.insert(hvar);
+                                ks.push(x);
+                            }
+                            _ => ()
+                        }
+                    }
+                }
+                _ => ()
+            }
+        }
+        _ => ()
+    }
+}
+
+pub fn heap_init(sema: &Sema) -> Vec<(u64, Vec<HVar>)> {
+    let mut hs = Vec::new();
+    for stmt in sema.stmts.iter() {
+        heap_prop(stmt, &mut hs)
+    }
+    // No temporaries or flags
+    hs.into_iter()
+        .map(|vv| {
+            vv.into_iter().filter(|kv| {
+            !kv.inner.tmp && (kv.inner.type_ != bap::high::bil::Type::Immediate(1))
+            }).collect::<Vec<_>>()
+        }).enumerate().map(|(k, v)| (k as u64, v))
         .collect()
 }
 
