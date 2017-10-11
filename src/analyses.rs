@@ -35,8 +35,8 @@ pub fn hashify((i, n, a): (&u64, &String, &BitVector)) -> u64 {
     hasher.finish()
 }
 
-pub fn trace_len_inc(i: &u64) -> Vec<u64> {
-    if *i < 60 { vec![*i + 1] } else { vec![] }
+pub fn trace_len_inc(len: usize) -> Box<Fn(&u64) -> Vec<u64>> {
+    Box::new(move |i| if *i < len as u64 { vec![*i + 1] } else { vec![] })
 }
 
 pub fn stack_len_inc(i: &u64) -> Vec<u64> {

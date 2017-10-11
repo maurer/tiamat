@@ -63,6 +63,12 @@ fn main() {
         "database connection string",
         &db_default_addr,
     );
+    opts.optopt(
+        "t",
+        "tracelen",
+        "maximum length of confirmation trace to consider",
+        "30",
+    );
     opts.optflag("h", "help", "print usage and exit");
     opts.optflag(
         "s",
@@ -78,12 +84,17 @@ fn main() {
         return;
     }
     let db_addr = matches.opt_str("d").unwrap_or(db_default_addr.to_string());
+    let trace_len = matches
+        .opt_str("t")
+        .unwrap_or("30".to_string())
+        .parse::<usize>()
+        .unwrap();
     let in_paths = matches.opt_strs("i");
 
     let mut core = Core::new().unwrap();
     let db = PgDB::new(&db_addr).unwrap();
     let mut holmes = Engine::new(db, core.handle());
-    let uaf = tiamat::uaf(in_paths);
+    let uaf = tiamat::uaf(in_paths, trace_len);
     uaf(&mut holmes, &mut core).unwrap();
     if matches.opt_present("s") {
         rule!(holmes, cmd_opt_skip_dyn: skip_func(name, addr) <= link_pad(name, [_], tgt)).unwrap();
@@ -108,12 +119,13 @@ fn main() {
         println!("True Positives: {}\nFalse Positives: {}", true_positives.len(), false_positives.len());
     }
     dump_profile(&holmes, "uaf");
-}
-
-fn dump(holmes: &mut Engine, target: &str) {
-    let data = holmes.render(&target.to_string()).unwrap();
-    let mut out_fd = std::fs::File::create(format!("{}.html", target)).unwrap();
-    out_fd.write_all(data.as_bytes()).unwrap();
+    let min_len: u64 = query!(holmes, use_after_free {trace = trace} & trace {id = trace, len = len})
+        .unwrap()
+        .into_iter()
+        .map(|x| *x[1].get().downcast_ref::<u64>().unwrap())
+        .min()
+        .unwrap_or(0);
+    println!("Minimum Relevant Trace: {}", min_len);
 }
 
 fn dump_profile(holmes: &Engine, target: &str) {

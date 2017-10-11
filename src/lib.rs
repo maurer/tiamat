@@ -268,9 +268,9 @@ pub fn printf_formats(holmes: &mut Engine) -> Result<()> {
 }
 
 
-pub fn uaf_trace_stage1(holmes: &mut Engine) -> Result<()> {
+pub fn uaf_trace_stage1(holmes: &mut Engine, trace_len: usize) -> Result<()> {
     holmes_exec!(holmes, {
-        func!(let trace_len_inc : uint64 -> [ uint64 ] = analyses::trace_len_inc);
+        func!(let trace_len_inc : uint64 -> [ uint64 ] = analyses::trace_len_inc(trace_len));
 
         // is_normal is derived for calls which don't need special handling
         rule!(uaf_trace_normal_call: is_normal(name, addr) <= link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)), {
@@ -368,7 +368,7 @@ pub fn grading(holmes: &mut Engine) -> Result<()> {
     })
 }
 
-pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
+pub fn uaf(in_paths: Vec<String>, trace_len: usize) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
     Box::new(move |holmes, core| {
         schema::setup(holmes)?;
         load_files(holmes, &in_paths)?;
@@ -394,7 +394,8 @@ pub fn uaf(in_paths: Vec<String>) -> Box<Fn(&mut Engine, &mut Core) -> Result<()
         uaf_stage2(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("UAF Stage 2 complete");
-        uaf_trace_stage1(holmes)?;
+        info!("Starting trace with length {}", trace_len);
+        uaf_trace_stage1(holmes, trace_len)?;
         core.run(holmes.quiesce()).unwrap();
         info!("UAF Tracing Stage 1 complete");
         uaf_trace_stage2(holmes)?;
