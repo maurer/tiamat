@@ -16,7 +16,7 @@ int main(int argc, char * argv[]) {
 
 	globalArgc = argc;
 	globalArgv = argv;
-
+#if 0
 #ifndef OMITGOOD
 
 	/* Calling C good functions */
@@ -2412,7 +2412,7 @@ int main(int argc, char * argv[]) {
 #endif /* __cplusplus */
 
 #endif /* OMITBAD */
-
+#endif
 	return 0;
 
 } 
