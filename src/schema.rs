@@ -13,7 +13,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
     try!(holmes.add_type(Arc::new(BVListType)));
     try!(holmes.add_type(Arc::new(SemaType)));
     try!(holmes.add_type(Arc::new(VarType)));
-    holmes_exec!(holmes, {
+    try!(holmes_exec!(holmes, {
         predicate!(file(string, largebytes));
         // Filename, contents, start addr, end addr, r, w, x
         predicate!(segment(string,
@@ -64,5 +64,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(is_normal(string, bitvector));
         predicate!(bad_stack(uint64, string));
         predicate!(good_stack(uint64, string))
-    })
+    }));
+    holmes.run_sql("index.sql");
+    Ok(())
 }
