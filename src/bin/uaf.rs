@@ -69,6 +69,12 @@ fn main() {
         "maximum length of confirmation trace to consider",
         "30",
     );
+    opts.optopt(
+        "l",
+        "limit",
+        "max time, in seconds, to run before stopping",
+        "3600",
+    );
     opts.optflag("h", "help", "print usage and exit");
     opts.optflag(
         "s",
@@ -89,11 +95,13 @@ fn main() {
         .unwrap_or("30".to_string())
         .parse::<usize>()
         .unwrap();
+    let limiter = matches.opt_str("l").map(|l| l.parse::<u64>().unwrap());
     let in_paths = matches.opt_strs("i");
 
     let mut core = Core::new().unwrap();
     let db = PgDB::new(&db_addr).unwrap();
     let mut holmes = Engine::new(db, core.handle());
+    limiter.map(|l| holmes.limit_time(::std::time::Duration::new(l, 0)));
     let uaf = tiamat::uaf(in_paths, trace_len);
     uaf(&mut holmes, &mut core).unwrap();
     if matches.opt_present("s") {
