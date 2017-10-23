@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Must be run in the root dir of the repo
 
-LARGE_OUT=juliet_out
+LARGE_OUT=$PWD/data/juliet_out
 rm -rf $LARGE_OUT
 mkdir -p $LARGE_OUT
 
 mkdir -p ~/.holmes
 
 echo -e "\e[36mTesting Juliet Sample CWE416\e[39m"
-export TIAMAT_PG_SOCK_DIR=`./tools/pg.bash`
+export TIAMAT_PG_SOCK_DIR=`./tools/pg.bash $LARGE_OUT`
 export RUST_LOG=tiamat=info
 if time cargo run $RELEASE_MODE --bin uaf -- -t 30 -i samples/Juliet/testcases/CWE416_Use_After_Free/CWE416 > $LARGE_OUT/CWE416.out 2> $LARGE_OUT/CWE416.err; then
 	echo -e "\e[32mAnalysis Completed\e[39m"

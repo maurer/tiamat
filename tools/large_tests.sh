@@ -2,6 +2,7 @@
 # Must be run in the root dir of the repo
 echo -e "\e[36mBuilding samples\e[39m"
 ./tools/build_samples.bash
+mkdir -p data
 
 export RELEASE_MODE=--release
 
@@ -10,5 +11,6 @@ time cargo build $RELEASE_MODE
 
 mkdir -p ~/.holmes
 
-./tools/juliet.sh &
-./tools/chops.sh &
+./tools/chops.sh
+./tools/juliet.sh
+./tools/bsdcpio.sh

@@ -6,3 +6,11 @@ samples/Juliet/testcases/*/*.o
 samples/Juliet/testcases/CWE416_Use_After_Free/CWE416
 
 .tmp*
+Cargo.lock
+data
+
+# Dump is a simple program on my system which runs a query on a tiamat
+# schema'd database and dumps it out.
+# It's basically a poor man's REPL for Holmes, but because it's constantly
+# changing and is only a diagnostic tool, I'm not including it
+src/bin/dump.rs

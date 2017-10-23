@@ -204,7 +204,6 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
             let [ chop2 ] = {chop_check([chop], [fut])};
             let [ var2 ] = {xfer_taint([sema], [var])}
         });
-
         // If it's a return and we have a stack, pop it
         rule!(flow_ret_pop: path_alias(src_name, src_addr, sa, stack2, chop, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, sa, stack, chop, ret_name, ret_addr, var, t) & lift {binary = ret_name, address = ret_addr, is_ret = (true)} & stack(stack, stack2, dst_name, dst_addr));
         rule!(flow_final: use_after_free_flow(name, src, sa, stack, other, loc, var) <= path_alias(name, src, sa, stack, [_], other, loc, var, (true)) & lift(other, loc, sema, [_]), {

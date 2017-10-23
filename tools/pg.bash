@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-export PGDATA=`mktemp -d .tmp.XXXXXX -p $PWD`
+export PGDATA=$1/db
 pg_ctl initdb -s -o -Atrust
 echo "unix_socket_directories = '$PGDATA'" >> $PGDATA/postgresql.conf
 echo "listen_addresses = ''" >> $PGDATA/postgresql.conf
