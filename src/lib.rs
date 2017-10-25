@@ -22,7 +22,8 @@ pub mod schema;
 pub mod bvlist;
 pub mod sema;
 pub mod var;
-
+pub mod chop;
+use chop::Chop;
 pub fn load_files(holmes: &mut Engine, in_paths: &[String]) -> Result<()> {
     let mut ins = Vec::new();
     for in_path in in_paths {
@@ -166,16 +167,18 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         // FactIds in the language itself.
         // FACTID nondet across revisions of compiler, perf hit, harder to read output
         func!(let hashify : (uint64, string, bitvector) -> uint64 = analyses::hashify);
-        rule!(flow_start: path_alias(src_name, addr, (0), (0), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & lift(src_name, addr, [_], step));
-        rule!(flow_start_heap: path_alias(src_name, addr, sa, (0), src_name, step, heap_var, (false)) <= lift(src_name, addr, sema, step), {
+        func!(let chop_check: (chop, bitvector) -> [chop] = |(chop, func): (&Chop, &BitVector)| chop.check(func));
+
+        rule!(flow_start: path_alias(src_name, addr, (0), (0), (Chop::new()), src_name, step, (var::get_ret()), (false)) <= malloc_call(src_name, addr) & lift(src_name, addr, [_], step));
+        rule!(flow_start_heap: path_alias(src_name, addr, sa, (0), (Chop::new()), src_name, step, heap_var, (false)) <= lift(src_name, addr, sema, step), {
             let [ {sa, [heap_var]} ] = {heap_init([sema])}
         });
-        rule!(flow_free: path_alias(src_name, src, sa, stack, free_name, next, af, (true)) <= path_alias(src_name, src, sa, stack, free_name, free_addr, af, [_]) & path_alias(src_name, src, sa, stack, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & lift(free_name, free_addr, [_], next));
+        rule!(flow_free: path_alias(src_name, src, sa, stack, chop, free_name, next, af, (true)) <= path_alias(src_name, src, sa, stack, chop, free_name, free_addr, af, [_]) & path_alias(src_name, src, sa, stack, chop, free_name, free_addr, (var::get_arg0()), [_]) & free_call(free_name, free_addr) & lift(free_name, free_addr, [_], next));
         // TODO THIS CANNOT EXIST IN NORMAL CODE - IT WILL MAKE FREE FREE THE CONTENTS OF RSI,
         // WHICH WERE NOT PASSED TO IT
-        rule!(flow_free_2_hack: path_alias(src_name, src, sa, stack, free_name, next, af, (true)) <= path_alias(src_name, src, sa, stack, free_name, free_addr, af, [_]) & path_alias(src_name, src, sa, stack, free_name, free_addr, (var::get_arg_n(1)), [_]) & free_call(free_name, free_addr) & lift(free_name, free_addr, [_], next));
+        rule!(flow_free_2_hack: path_alias(src_name, src, sa, stack, chop, free_name, next, af, (true)) <= path_alias(src_name, src, sa, stack, chop, free_name, free_addr, af, [_]) & path_alias(src_name, src, sa, stack, chop, free_name, free_addr, (var::get_arg_n(1)), [_]) & free_call(free_name, free_addr) & lift(free_name, free_addr, [_], next));
         // If there's a successor, follow that and transfer taint (but not if it's a call)
-        rule!(flow_prop: path_alias(name, src, sa, stack, cur_name, fut, var2, t) <= path_alias(name, src, sa, stack, cur_name, cur, var, t) & lift(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
+        rule!(flow_prop: path_alias(name, src, sa, stack, chop, cur_name, fut, var2, t) <= path_alias(name, src, sa, stack, chop, cur_name, cur, var, t) & lift(cur_name, cur, sema, [_]) & succ(cur_name, cur, fut, (false)), {
           let [ var2 ] = {xfer_taint([sema], [var])}
       });
 
@@ -183,7 +186,7 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         // In the case of malloc, we special case to just filter out the return variable
         // TODO clobber return _and_ standard clobbers
         // TODO do we need to xfer taint here? Maybe omit
-        rule!(flow_skip_func: path_alias(name, src, sa, stack, cur_name, fall, var2, t) <= path_alias(name, src, sa, stack, cur_name, cur, var, t) & skip_func(cur_name, cur) & lift(cur_name, cur, sema, fall) , {
+        rule!(flow_skip_func: path_alias(name, src, sa, stack, chop, cur_name, fall, var2, t) <= path_alias(name, src, sa, stack, chop, cur_name, cur, var, t) & skip_func(cur_name, cur) & lift(cur_name, cur, sema, fall) , {
           let [ var2 ] = {xfer_taint([sema], [var])};
           let (false) = {is_ret_reg([var2])}
       });
@@ -191,23 +194,24 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
         fact!(stack(0, 0, "", (BitVector::nil()), 0));
 
         // If we're at a call site, create a stack record
-        rule!(flow_stack_push: stack(stack2, stack, cur_name, fall, len2) <= path_alias([_], [_], [_], stack, cur_name, cur, var, [_]) & lift(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, [_]) & stack{id = stack, len = len}, {
+        rule!(flow_stack_push: stack(stack2, stack, cur_name, fall, len2) <= path_alias([_], [_], [_], stack, [_], cur_name, cur, var, [_]) & lift(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, [_]) & stack{id = stack, len = len}, {
             let [ len2 ] = {stack_len_inc([len])};
             let stack2 = {hashify([stack], [cur_name], [fall])}
         });
         // If it's a call, a call_site instance will be generated, resolving dynamic calls if
         // needed. Add this onto the stack so any returns actually go here rather than anywhere
-        rule!(flow_call: path_alias(name, src, sa, stack2, next_name, fut, var2, t) <= path_alias(name, src, sa, stack, cur_name, cur, var, t) & lift(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut) & stack(stack2, stack, cur_name, fall), {
-        let [ var2 ] = {xfer_taint([sema], [var])}
+        rule!(flow_call: path_alias(name, src, sa, stack2, chop2, next_name, fut, var2, t) <= path_alias(name, src, sa, stack, chop, cur_name, cur, var, t) & lift(cur_name, cur, sema, fall) & call_site(cur_name, cur, next_name, fut) & stack(stack2, stack, cur_name, fall), {
+            let [ chop2 ] = {chop_check([chop], [fut])};
+            let [ var2 ] = {xfer_taint([sema], [var])}
         });
 
         // If it's a return and we have a stack, pop it
-        rule!(flow_ret_pop: path_alias(src_name, src_addr, sa, stack2, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, sa, stack, ret_name, ret_addr, var, t) & lift {binary = ret_name, address = ret_addr, is_ret = (true)} & stack(stack, stack2, dst_name, dst_addr));
-        rule!(flow_final: use_after_free_flow(name, src, sa, stack, other, loc, var) <= path_alias(name, src, sa, stack, other, loc, var, (true)) & lift(other, loc, sema, [_]), {
+        rule!(flow_ret_pop: path_alias(src_name, src_addr, sa, stack2, chop, dst_name, dst_addr, var, t) <= path_alias(src_name, src_addr, sa, stack, chop, ret_name, ret_addr, var, t) & lift {binary = ret_name, address = ret_addr, is_ret = (true)} & stack(stack, stack2, dst_name, dst_addr));
+        rule!(flow_final: use_after_free_flow(name, src, sa, stack, other, loc, var) <= path_alias(name, src, sa, stack, [_], other, loc, var, (true)) & lift(other, loc, sema, [_]), {
           let (true) = {deref_var([sema], [var])}
         });
         // puts uses the variable, but we're not anlyzing libc for now
-        rule!(flow_final_func_use: use_after_free_flow(name, src, sa, stack, other, loc, var) <= path_alias(name, src, sa, stack, other, loc, var, (true)) & func_uses(other, loc, var))
+        rule!(flow_final_func_use: use_after_free_flow(name, src, sa, stack, other, loc, var) <= path_alias(name, src, sa, stack, [_], other, loc, var, (true)) & func_uses(other, loc, var))
 
     })?;
     Ok(())
@@ -216,7 +220,9 @@ pub fn uaf_stage1(holmes: &mut Engine) -> Result<()> {
 pub fn uaf_stage2(holmes: &mut Engine) -> Result<()> {
     holmes_exec!(holmes, {
         // If it's a return and an empty stack, return anywhere we were called
-        rule!(flow_ret_notarget: path_alias(src_name, src_addr, sa, (0), call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, sa, (0), ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & lift {binary = ret_name, address = ret_addr, is_ret = (true)} & lift(call_name, call_addr, [_], dst_addr))
+        rule!(flow_ret_notarget: path_alias(src_name, src_addr, sa, (0), chop2, call_name, dst_addr, var, t) <= path_alias(src_name, src_addr, sa, (0), chop, ret_name, ret_addr, var, t) & func(ret_name, func_addr, ret_addr) & call_site(call_name, call_addr, ret_name, func_addr) & lift {binary = ret_name, address = ret_addr, is_ret = (true)} & lift(call_name, call_addr, [_], dst_addr), {
+            let [ chop2 ] = {chop_check([chop], [func_addr])}
+        })
     })
 }
 
@@ -318,7 +324,7 @@ pub fn uaf_trace_stage1(holmes: &mut Engine, trace_len: usize) -> Result<()> {
 pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
     holmes_exec!(holmes, { 
         // Initialize with a trace right after malloc
-        rule!(uaf_trace_malloc: path_alias_trace(src_name, addr, sa, var, (false), trace) <= use_after_free_flow(src_name, addr, sa, [_], [_], [_], [_]) & trace(trace, (0), (0), src_name, addr, [_]) & path_alias(src_name, addr, sa, [_], nbin, naddr, var) & trace {prev = trace, bin = nbin, addr = naddr });
+        rule!(uaf_trace_malloc: path_alias_trace(src_name, addr, sa, var, (false), trace) <= use_after_free_flow(src_name, addr, sa, [_], [_], [_], [_]) & trace(trace, (0), (0), src_name, addr, [_]) & path_alias(src_name, addr, sa, [_], [_], nbin, naddr, var) & trace {prev = trace, bin = nbin, addr = naddr });
 
         // If something is free'd, upgrade the alias set at that tracepoint
         rule!(uaf_trace_free: path_alias_trace(src_name, src, sa, var, (true), trace2) <= path_alias_trace(src_name, src, sa, (var::get_arg0()), [_], trace) & path_alias_trace(src_name, src, sa, var, [_], trace) & free_call(free_name, free_addr) & trace(trace2, [_], trace, free_name, free_addr, [_]));

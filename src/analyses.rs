@@ -142,7 +142,7 @@ fn compute_expr(e: &Expression, ks: &HashMap<HVar, BitVector>) -> Option<BitVect
                 Some(bv) => compute_cast(kind, bs, bv),
                 None => None
             },
-        BinOp { op: op, lhs: ref lhs, rhs: ref rhs } =>
+        BinOp { op, ref lhs, ref rhs } =>
             match (compute_expr(lhs, ks), compute_expr(rhs, ks)) {
                 (Some(lhs_v), Some(rhs_v)) => compute_op(op, lhs_v, rhs_v),
                 _ => None

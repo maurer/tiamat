@@ -4,6 +4,7 @@ use var::VarType;
 use std::sync::Arc;
 use ubvs::UBVSType;
 use bvlist::BVListType;
+use chop::ChopType;
 use sema::SemaType;
 
 pub fn setup(holmes: &mut Engine) -> Result<()> {
@@ -13,6 +14,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
     try!(holmes.add_type(Arc::new(BVListType)));
     try!(holmes.add_type(Arc::new(SemaType)));
     try!(holmes.add_type(Arc::new(VarType)));
+    try!(holmes.add_type(Arc::new(ChopType)));
     try!(holmes_exec!(holmes, {
         predicate!(file(string, largebytes));
         // Filename, contents, start addr, end addr, r, w, x
@@ -43,7 +45,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
         predicate!(stack([id uint64], [prev uint64], [bin string], [addr bitvector], [len uint64]));
         predicate!(trace([id uint64], [stack uint64], [prev uint64], [bin string], [addr bitvector], [len uint64]));
         // Filename, malloc_site, exit, var, freed
-        predicate!(path_alias([source_binary string], [malloc_site bitvector], [alias_set uint64], [stack uint64], [cur_binary string], [def_site bitvector], [def_var var], [freed bool]));
+        predicate!(path_alias([source_binary string], [malloc_site bitvector], [alias_set uint64], [stack uint64], [chop chop], [cur_binary string], [def_site bitvector], [def_var var], [freed bool]));
         predicate!(path_alias_trace([source_binary string], [malloc_site bitvector], [alias_set uint64], [def_var var], [freed bool], [trace uint64]));
         predicate!(free_call(string, bitvector));
         predicate!(malloc_call(string, bitvector));
