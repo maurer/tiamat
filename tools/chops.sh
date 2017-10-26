@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Must be run in the root dir of the repo
-CHOP_OUT=`mktemp`
+CHOP_OUT=`mktemp -d`
 export HOLMES_PG_SOCK_DIR=`./tools/pg.bash $CHOP_OUT`
-if time cargo test --release --test chops | tee $CHOP_OUT; then
+if time cargo test --release --test chops | tee $CHOP_OUT/out; then
 	echo -e "\e[32All Chops Validated\e[39m"
 	rm $CHOP_OUT
 else

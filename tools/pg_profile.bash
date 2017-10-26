@@ -9,6 +9,7 @@ echo "shared_preload_libraries = 'auto_explain'" >> $PGDATA/postgresql.conf
 echo "auto_explain.log_min_duration = '5s'" >> $PGDATA/postgresql.conf
 echo "auto_explain.log_analyze = 'true'" >> $PGDATA/postgresql.conf
 echo "synchronous_commit = off" >> $PGDATA/postgresql.conf
+echo "wal_level = minimal" >> $PGDATA/postgresql.conf
 pg_ctl -w start -s -l/dev/null
 createuser -h $PGDATA -s holmes
 echo $PGDATA
