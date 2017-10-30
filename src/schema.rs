@@ -32,7 +32,7 @@ pub fn setup(holmes: &mut Engine) -> Result<()> {
                 [address bitvector],
                 [bil sema],
                 [fallthrough bitvector],
-                [disassembly string],
+                [disassembly largestring],
                 [is_call bool],
                 [is_ret bool]));
 
