@@ -124,9 +124,9 @@ pub fn basic_setup(holmes: &mut Engine) -> Result<()> {
       });
 
         // FACT May be better implemented via a pre-populated predicate
-        func!(let is_free_name : string -> bool = |s : &String| (s == "free") || (s == "qfree"));
+        func!(let is_free_name : string -> bool = |s : &String| (s == "free") || (s == "qfree") || (s == "g_free"));
         // FACT May be better implemented via a pre-populated predicate
-        func!(let is_malloc_name : string -> bool = |s : &String| (s == "malloc") || (s == "xmalloc") || (s == "calloc") || (s == "xcalloc") || (s == "qcalloc") || (s == "qmalloc"));
+        func!(let is_malloc_name : string -> bool = |s : &String| (s.contains("malloc")) || (s.contains("calloc")));
         rule!(free_call_by_name: free_call(name, addr) <= link_pad(name, func_name, tgt) & succ(name, addr, tgt, (true)), {
             let (true) = {is_free_name([func_name])}
         });
