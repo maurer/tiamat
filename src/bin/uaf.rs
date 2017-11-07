@@ -102,7 +102,7 @@ fn main() {
     let db = PgDB::new(&db_addr).unwrap();
     let mut holmes = Engine::new(db, core.handle());
     limiter.map(|l| holmes.limit_time(::std::time::Duration::new(l, 0)));
-    let uaf = tiamat::uaf(in_paths, trace_len);
+    let uaf = tiamat::uaf(in_paths, trace_len, true);
     uaf(&mut holmes, &mut core).unwrap();
     if matches.opt_present("s") {
         rule!(holmes, cmd_opt_skip_dyn: skip_func(name, addr) <= link_pad(name, [_], tgt)).unwrap();

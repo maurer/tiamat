@@ -373,7 +373,7 @@ pub fn grading(holmes: &mut Engine) -> Result<()> {
     })
 }
 
-pub fn uaf(in_paths: Vec<String>, trace_len: usize) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
+pub fn uaf(in_paths: Vec<String>, trace_len: usize, kprop: bool) -> Box<Fn(&mut Engine, &mut Core) -> Result<()>> {
     Box::new(move |holmes, core| {
         schema::setup(holmes)?;
         load_files(holmes, &in_paths)?;
@@ -384,15 +384,17 @@ pub fn uaf(in_paths: Vec<String>, trace_len: usize) -> Box<Fn(&mut Engine, &mut 
         setup_stage2(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("Basic analysis post-processing complete");
-        const_prop(holmes)?;
-        core.run(holmes.quiesce()).unwrap();
-        info!("Constant propagation complete");
-        str_const(holmes)?;
-        core.run(holmes.quiesce()).unwrap();
-        info!("String constant detection complete");
-        printf_formats(holmes)?;
-        core.run(holmes.quiesce()).unwrap();
-        info!("Printf-like argument usage information detected");
+        if kprop {
+            const_prop(holmes)?;
+            core.run(holmes.quiesce()).unwrap();
+            info!("Constant propagation complete");
+            str_const(holmes)?;
+            core.run(holmes.quiesce()).unwrap();
+            info!("String constant detection complete");
+            printf_formats(holmes)?;
+            core.run(holmes.quiesce()).unwrap();
+            info!("Printf-like argument usage information detected");
+        }
         uaf_stage1(holmes)?;
         core.run(holmes.quiesce()).unwrap();
         info!("UAF Stage 1 complete");
