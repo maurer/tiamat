@@ -86,10 +86,16 @@ fn main() {
     let mut holmes = Engine::new(db, core.handle());
     tiamat::schema::setup(&mut holmes).unwrap();
     predicate!(holmes, path_alias_u(uint64, uint64, var, bool)).unwrap();
+    predicate!(holmes, uaf_u(uint64, uint64, var)).unwrap();
     func!(holmes, let to64 : bitvector -> uint64 = |bv: &BitVector| bv.to_u64().unwrap()).unwrap();
-    rule!(holmes, path_alias_to_u64: path_alias_u(alloc64, cur64, var, freed) <= path_alias([_], alloc, [_], [_], cur, var, freed), {
+    rule!(holmes, path_alias_to_u64: path_alias_u(alloc64, cur64, var, freed) <= path_alias {malloc_site = alloc, def_site = cur, def_var = var, freed = freed}, {
         let cur64 = {to64([cur])};
         let alloc64 = {to64([alloc])}
     }).unwrap();
+    rule!(holmes, uaf_to_u64: uaf_u(alloc64, cur64, var) <= use_after_free_flow {source = alloc, sink = cur, loc = var}, {
+        let cur64 = {to64([cur])};
+        let alloc64 = {to64([alloc])}
+    }).unwrap();
+
     core.run(holmes.quiesce()).unwrap();
 }

@@ -8,7 +8,7 @@ use std::io::Write;
 #[test]
 pub fn simple() {
     single(&|holmes, core| {
-        tiamat::uaf(vec!["./samples/use_after_free/simple".to_string()], 9)(holmes, core)?;
+        tiamat::uaf(vec!["./samples/use_after_free/simple".to_string()], 9, false)(holmes, core)?;
         dump(holmes, "succ");
         assert!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len() >= 1);
         Ok(())
@@ -18,7 +18,7 @@ pub fn simple() {
 #[test]
 pub fn safe() {
     single(&|holmes, core| {
-        tiamat::uaf(vec!["./samples/use_after_free/safe".to_string()], 9)(holmes, core)?;
+        tiamat::uaf(vec!["./samples/use_after_free/safe".to_string()], 9, false)(holmes, core)?;
         assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 0);
         Ok(())
     })
@@ -27,7 +27,7 @@ pub fn safe() {
 #[test]
 pub fn func() {
     single(&|mut holmes, core| {
-        tiamat::uaf(vec!["./samples/use_after_free/func".to_string()], 18)(holmes, core)?;
+        tiamat::uaf(vec!["./samples/use_after_free/func".to_string()], 18, false)(holmes, core)?;
         dump(&mut holmes, "succ");
         core.run(holmes.quiesce()).unwrap();
         assert_eq!(query!(holmes, use_after_free([_]))?.len(), 1);
@@ -42,6 +42,7 @@ pub fn link() {
             vec!["./samples/use_after_free/func".to_string(),
                          "./samples/use_after_free/external.so".to_string()],
             18,
+            false,
         )(holmes, core)?;
         core.run(holmes.quiesce()).unwrap();
         assert_eq!(query!(holmes, use_after_free_flow([_]))?.len(), 1);
@@ -56,6 +57,7 @@ pub fn path_sensitive() {
         tiamat::uaf(
             vec!["./samples/use_after_free/path_sensitive".to_string()],
             9,
+            false,
         )(holmes, core)?;
         assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 0);
         Ok(())
@@ -65,7 +67,7 @@ pub fn path_sensitive() {
 #[test]
 pub fn remalloc() {
     single(&|holmes, core| {
-        tiamat::uaf(vec!["./samples/use_after_free/remalloc".to_string()], 9)(holmes, core)?;
+        tiamat::uaf(vec!["./samples/use_after_free/remalloc".to_string()], 9, false)(holmes, core)?;
         assert_eq!(query!(holmes, use_after_free([_], [_], [_], [_], [_], [_], [_]))?.len(), 0);
         Ok(())
     })
@@ -74,7 +76,7 @@ pub fn remalloc() {
 #[test]
 pub fn inf_trace() {
     single(&|holmes, core| {
-        tiamat::uaf(vec!["./samples/use_after_free/loop".to_string()], 18)(holmes, core)?;
+        tiamat::uaf(vec!["./samples/use_after_free/loop".to_string()], 18, false)(holmes, core)?;
         let mut out = query!(holmes, true_positive([_], [_], name))?;
         out.sort();
         out.dedup();
