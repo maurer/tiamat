@@ -327,6 +327,8 @@ pub fn uaf_trace_stage2(holmes: &mut Engine) -> Result<()> {
 
         // If something is free'd, upgrade the alias set at that tracepoint
         rule!(uaf_trace_free: path_alias_trace(src_name, src, sa, var, (true), trace2) <= path_alias_trace(src_name, src, sa, (var::get_arg0()), [_], trace) & path_alias_trace(src_name, src, sa, var, [_], trace) & free_call(free_name, free_addr) & trace(trace2, [_], trace, free_name, free_addr, [_]));
+        //TODO hack, please limit to qfree
+        rule!(uaf_trace_free2: path_alias_trace(src_name, src, sa, var, (true), trace2) <= path_alias_trace(src_name, src, sa, (var::get_arg_n(1)), [_], trace) & path_alias_trace(src_name, src, sa, var, [_], trace) & free_call(free_name, free_addr) & trace(trace2, [_], trace, free_name, free_addr, [_]));
 
         // If the instruction is not a call or return, advance
         rule!(uaf_trace_step: path_alias_trace(name, src, sa, var2, t, trace2) <= path_alias_trace(name, src, sa, var, t, trace) & trace(trace2, [_], trace, cur_name, cur, [_]) & lift(cur_name, cur, sema, [_]) & succ(cur_name, cur, [_], (false)), {
